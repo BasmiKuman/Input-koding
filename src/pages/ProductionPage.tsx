@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
 import { useInventoryBatches, useAddBatch } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
-import { Factory, Plus, Calendar, Package, Clock } from 'lucide-react';
+import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ function ProductionPage() {
   const [quantity, setQuantity] = useState('');
   const [productionDate, setProductionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expiryDate, setExpiryDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+  const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
 
   // Get selected product to determine expiry days
   const selectedProduct = products?.find(p => p.id === productId);
@@ -83,20 +85,32 @@ function ProductionPage() {
   const getExpiryStatus = (days: number) => {
     if (days < 0) return { label: 'Expired', class: 'badge-danger' };
     if (days === 0) return { label: 'Hari ini', class: 'badge-danger' };
-    if (days <= 2) return { label: `${days} hari`, class: 'badge-warning' };
+    if (days <= 3) return { label: `${days} hari`, class: 'badge-warning' };
     return { label: `${days} hari`, class: 'badge-success' };
   };
 
-  // Group batches by production date
-  const groupedBatches = batches?.reduce((acc, batch) => {
-    const date = batch.production_date;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(batch);
+  // Group and consolidate batches by product name
+  const consolidatedBatches = batches?.reduce((acc, batch) => {
+    const productName = batch.product?.name || 'Unknown';
+    if (!acc[productName]) {
+      acc[productName] = {
+        productName,
+        productId: batch.product_id,
+        category: batch.product?.category,
+        batches: [],
+        totalProduced: 0,
+        totalCurrent: 0,
+      };
+    }
+    acc[productName].batches.push(batch);
+    acc[productName].totalProduced += batch.initial_quantity;
+    acc[productName].totalCurrent += batch.current_quantity;
     return acc;
-  }, {} as Record<string, typeof batches>) || {};
+  }, {} as Record<string, any>) || {};
 
-  const sortedDates = Object.keys(groupedBatches).sort((a, b) => 
-    new Date(b).getTime() - new Date(a).getTime()
+  // Sort by product name
+  const sortedProducts = Object.values(consolidatedBatches).sort((a, b) => 
+    a.productName.localeCompare(b.productName)
   );
 
   return (
@@ -185,75 +199,110 @@ function ProductionPage() {
         </Dialog>
       }
     >
-      {/* Batch List by Date */}
-      <div className="space-y-6">
-        {sortedDates.map((date) => {
-          const batchesForDate = groupedBatches[date] || [];
-          const formattedDate = format(new Date(date), 'EEEE, dd MMMM yyyy', { locale: localeId });
-          const isToday = date === format(new Date(), 'yyyy-MM-dd');
+      {/* Consolidated Product List */}
+      <div className="space-y-3">
+        {sortedProducts.map((consolidated, index) => {
+          const isExpanded = expandedProducts[consolidated.productName];
+          const latestBatch = consolidated.batches.sort((a, b) => 
+            new Date(b.production_date).getTime() - new Date(a.production_date).getTime()
+          )[0];
+          const daysUntil = latestBatch ? getDaysUntilExpiry(latestBatch.expiry_date) : 0;
+          const status = getExpiryStatus(daysUntil);
 
           return (
-            <div key={date}>
-              <div className="flex items-center gap-2 mb-3">
-                <Calendar className={cn('w-4 h-4', isToday ? 'text-primary' : 'text-muted-foreground')} />
-                <h3 className={cn('font-medium text-sm', isToday ? 'text-primary' : 'text-muted-foreground')}>
-                  {isToday ? 'Hari ini' : formattedDate}
-                </h3>
-              </div>
-              <div className="table-container">
-                <AnimatePresence>
-                  {batchesForDate.map((batch, index) => {
-                    const daysUntil = getDaysUntilExpiry(batch.expiry_date);
-                    const status = getExpiryStatus(daysUntil);
-                    
-                    return (
-                      <motion.div
-                        key={batch.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="p-4 border-b border-border last:border-0"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              'w-10 h-10 rounded-lg flex items-center justify-center',
-                              batch.product?.category === 'product'
-                                ? 'bg-primary/10 text-primary'
-                                : 'bg-secondary/10 text-secondary'
-                            )}>
-                              <Package className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <p className="font-medium">{batch.product?.name}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-muted-foreground">
-                                  Produksi: {batch.initial_quantity}
-                                </span>
-                                <span className="text-muted-foreground">•</span>
-                                <span className="text-xs text-muted-foreground">
-                                  Sisa: {batch.current_quantity}
-                                </span>
+            <motion.div
+              key={consolidated.productName}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+              className="border border-border rounded-lg overflow-hidden"
+            >
+              {/* Summary Row */}
+              <button
+                onClick={() => setExpandedProducts(prev => ({
+                  ...prev,
+                  [consolidated.productName]: !prev[consolidated.productName]
+                }))}
+                className="w-full p-4 hover:bg-muted/30 transition-colors text-left flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3 flex-1">
+                  <div className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center',
+                    consolidated.category === 'product'
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-secondary/10 text-secondary'
+                  )}>
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold">{consolidated.productName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {consolidated.batches.length} batch • Produksi: {consolidated.totalProduced} • Sisa: {consolidated.totalCurrent}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className={status.class}>{status.label}</span>
+                    {latestBatch && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Exp: {format(new Date(latestBatch.expiry_date), 'dd/MM')}
+                      </p>
+                    )}
+                  </div>
+                  {isExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </div>
+              </button>
+
+              {/* Expanded Batch Details */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-border bg-muted/20"
+                  >
+                    <div className="divide-y divide-border">
+                      {consolidated.batches
+                        .sort((a, b) => new Date(b.production_date).getTime() - new Date(a.production_date).getTime())
+                        .map((batch) => {
+                          const daysUntil = getDaysUntilExpiry(batch.expiry_date);
+                          const status = getExpiryStatus(daysUntil);
+                          return (
+                            <div key={batch.id} className="p-3 text-sm">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-muted-foreground">
+                                    Produksi: {format(new Date(batch.production_date), 'dd/MM/yy')}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Awal: {batch.initial_quantity} • Sisa: {batch.current_quantity}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <span className={status.class}>{status.label}</span>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {format(new Date(batch.expiry_date), 'dd/MM/yy')}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <span className={status.class}>{status.label}</span>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Exp: {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-            </div>
+                          );
+                        })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           );
         })}
 
-        {sortedDates.length === 0 && (
+        {sortedProducts.length === 0 && (
           <div className="table-container p-8 text-center text-muted-foreground">
             <Factory className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>Belum ada data produksi</p>

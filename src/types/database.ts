@@ -15,6 +15,9 @@ export interface InventoryBatch {
   initial_quantity: number;
   current_quantity: number;
   created_at: string;
+  rejected_quantity?: number;
+  rejection_reason?: string;
+  rejected_at?: string;
   product?: Product;
 }
 

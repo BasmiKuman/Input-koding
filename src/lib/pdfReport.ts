@@ -299,6 +299,48 @@ export function generateDailyReport(data: ReportData) {
     margin: { left: 14, right: 14 },
   });
 
+  yPos = (doc as any).lastAutoTable.finalY + 10;
+
+  // Rejection Data
+  const rejectedBatches = data.batches.filter(b => b.rejected_quantity && b.rejected_quantity > 0);
+  
+  if (rejectedBatches.length > 0) {
+    checkAndAddPage(50);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(220, 38, 38);
+    doc.text('PRODUK DIMUSNAHKAN', 14, yPos);
+    yPos += 6;
+
+    const rejectionData = rejectedBatches.map(b => [
+      b.product?.name || '-',
+      b.rejected_quantity?.toString() || '0',
+      format(new Date(b.production_date), 'dd/MM/yyyy'),
+      format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+      b.rejection_reason || 'Expired',
+    ]);
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Produk', 'Jumlah', 'Produksi', 'Kadaluarsa', 'Alasan']],
+      body: rejectionData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [220, 38, 38],
+        textColor: [255, 255, 255],
+        fontSize: 9,
+      },
+      bodyStyles: {
+        textColor: [50, 50, 50],
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [255, 240, 240],
+      },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
   // Footer
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {

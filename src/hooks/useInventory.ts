@@ -167,3 +167,40 @@ export function useUpdateBatchQuantity() {
     },
   });
 }
+export function useRejectBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      quantity, 
+      reason 
+    }: { 
+      id: string; 
+      quantity: number; 
+      reason: string 
+    }) => {
+      const { error } = await supabase
+        .from('inventory_batches' as never)
+        .update({ 
+          rejected_quantity: quantity,
+          rejection_reason: reason,
+          rejected_at: new Date().toISOString(),
+          current_quantity: 0
+        } as never)
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
+      toast.success('Batch berhasil dimusnahkan');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal memusnahkan batch: ' + error.message);
+    },
+  });
+}
+
