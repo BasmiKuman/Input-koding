@@ -65,7 +65,8 @@ function DistributionPage() {
     'Kopi Aren': 30,
     'Matcha': 5,
     'Coklat': 5,
-    'Taro Bubblegum': 5,
+    'Bubblegum': 5,
+    'Taro': 5,
   };
 
   const handleAutoDistribute = async (mode: 'default' | 'custom') => {
@@ -149,7 +150,7 @@ function DistributionPage() {
         });
         
         if (!batch) {
-          console.log(`⚠️ ${product.name}: No valid batch found`);
+          console.log(`⚠️ ${product.name} (ID: ${product.id}): No valid batch found`);
           failedProducts.push({name: product.name, reason: 'No valid batch found'});
           continue;
         }
