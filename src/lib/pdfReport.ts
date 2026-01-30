@@ -302,7 +302,7 @@ export function generateDailyReport(data: ReportData) {
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
   // Rejection Data
-  const rejectedBatches = data.batches.filter(b => b.rejected_quantity && b.rejected_quantity > 0);
+  const rejectedBatches = data.batches.filter(b => b.notes && b.notes.includes('REJECTED'));
   
   if (rejectedBatches.length > 0) {
     checkAndAddPage(50);
@@ -312,13 +312,17 @@ export function generateDailyReport(data: ReportData) {
     doc.text('PRODUK DIMUSNAHKAN', 14, yPos);
     yPos += 6;
 
-    const rejectionData = rejectedBatches.map(b => [
-      b.product?.name || '-',
-      b.rejected_quantity?.toString() || '0',
-      format(new Date(b.production_date), 'dd/MM/yyyy'),
-      format(new Date(b.expiry_date), 'dd/MM/yyyy'),
-      b.rejection_reason || 'Expired',
-    ]);
+    const rejectionData = rejectedBatches.map(b => {
+      const notesMatch = b.notes?.match(/REJECTED: (.+?) at/);
+      const reason = notesMatch ? notesMatch[1] : 'Expired';
+      return [
+        b.product?.name || '-',
+        b.initial_quantity?.toString() || '0',
+        format(new Date(b.production_date), 'dd/MM/yyyy'),
+        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+        reason,
+      ];
+    });
 
     autoTable(doc, {
       startY: yPos,

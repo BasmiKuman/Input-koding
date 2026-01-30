@@ -74,23 +74,30 @@ function DistributionPage() {
     if (mode === 'default') {
       // Auto-distribute default products
       const productsToDistribute = allProducts?.filter(p => {
-        const name = p.name.toLowerCase();
-        // Include default products and all add-ons (except those matching specific product names)
+        const name = p.name.toLowerCase().trim();
+        // Include all add-ons
         if (p.category === 'addon') return true;
-        return Object.keys(DEFAULT_DISTRIBUTION_CONFIG).some(key => 
-          name.includes(key.toLowerCase())
+        // Include default products (exact match or contain key word)
+        const configKeys = Object.keys(DEFAULT_DISTRIBUTION_CONFIG);
+        return configKeys.some(key => 
+          name === key.toLowerCase() || name.includes(key.toLowerCase())
         );
       }) || [];
 
       let successCount = 0;
+      const distributed = new Set<string>();
       
       for (const product of productsToDistribute) {
-        const batch = availableBatches?.find(b => b.product_id === product.id);
+        // Prevent duplicate distribution of same product
+        if (distributed.has(product.id)) continue;
+        distributed.add(product.id);
+
+        const batch = availableBatches?.find(b => b.product_id === product.id && b.current_quantity > 0);
         if (!batch) continue;
 
         const quantity = product.category === 'addon' 
           ? 5 
-          : DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5;
+          : (DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5);
 
         try {
           await addDistribution.mutateAsync({
@@ -699,10 +706,13 @@ function DistributionPage() {
                           <p className="text-sm text-muted-foreground">{riderDists.length} produk</p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right text-xs">
                         <p className="text-sm font-medium">{riderDists.reduce((acc, d) => acc + d.quantity, 0)} unit</p>
-                        <p className="text-xs text-muted-foreground">
-                          Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                        <p className="text-muted-foreground">
+                          📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                        </p>
+                        <p className="text-muted-foreground">
+                          🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
                         </p>
                       </div>
                     </div>

@@ -180,13 +180,13 @@ export function useRejectBatch() {
       quantity: number; 
       reason: string 
     }) => {
+      // Set current_quantity to 0 to mark as rejected
+      // Use notes field to store rejection reason
       const { error } = await supabase
         .from('inventory_batches' as never)
         .update({ 
-          rejected_quantity: quantity,
-          rejection_reason: reason,
-          rejected_at: new Date().toISOString(),
-          current_quantity: 0
+          current_quantity: 0,
+          notes: `REJECTED: ${reason} at ${new Date().toISOString()}`
         } as never)
         .eq('id', id);
       

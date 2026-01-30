@@ -272,13 +272,16 @@ function Dashboard() {
                           <span className="font-medium">
                             {format(new Date(batch.production_date), 'dd/MM/yy')}
                           </span>
-                          <span className={statusClass}>
-                            {daysUntil < 0 ? 'Expired' : `${daysUntil} hari`}
+                          <span className={batch.notes && batch.notes.includes('REJECTED') ? 'badge-danger' : statusClass}>
+                            {batch.notes && batch.notes.includes('REJECTED') ? 'Dimusnahkan' : (daysUntil < 0 ? 'Expired' : `${daysUntil} hari`)}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Awal: {batch.initial_quantity} • Sisa: {batch.current_quantity}
                         </p>
+                        {batch.notes && batch.notes.includes('REJECTED') && (
+                          <p className="text-xs text-danger mt-1">{batch.notes}</p>
+                        )}
                       </div>
                     );
                   })}
