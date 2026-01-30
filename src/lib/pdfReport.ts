@@ -301,6 +301,112 @@ export function generateDailyReport(data: ReportData) {
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
+  // Expiry Warnings
+  const allBatches = data.batches;
+  const almostExpired = allBatches.filter(b => {
+    const daysUntil = Math.ceil(
+      (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return daysUntil >= 0 && daysUntil <= 3 && b.current_quantity > 0;
+  });
+
+  const alreadyExpired = allBatches.filter(b => {
+    const daysUntil = Math.ceil(
+      (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return daysUntil < 0 && b.current_quantity > 0 && (!b.notes || !b.notes.includes('REJECTED'));
+  });
+
+  // Section: Almost Expired (≤3 hari)
+  if (almostExpired.length > 0) {
+    checkAndAddPage(50);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(245, 158, 11);
+    doc.text('PRODUK AKAN EXPIRED (≤3 HARI)', 14, yPos);
+    yPos += 6;
+
+    const almostExpiredData = almostExpired.map(b => {
+      const daysUntil = Math.ceil(
+        (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return [
+        b.product?.name || '-',
+        b.current_quantity.toString(),
+        format(new Date(b.production_date), 'dd/MM/yyyy'),
+        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+        daysUntil === 0 ? 'Hari ini!' : daysUntil + ' hari',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Produk', 'Stok', 'Produksi', 'Kadaluarsa', 'Sisa Hari']],
+      body: almostExpiredData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [245, 158, 11],
+        textColor: [255, 255, 255],
+        fontSize: 9,
+      },
+      bodyStyles: {
+        textColor: [50, 50, 50],
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [255, 243, 224],
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // Section: Already Expired
+  if (alreadyExpired.length > 0) {
+    checkAndAddPage(50);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(239, 68, 68);
+    doc.text('PRODUK SUDAH EXPIRED', 14, yPos);
+    yPos += 6;
+
+    const expiredData = alreadyExpired.map(b => {
+      const daysUntil = Math.ceil(
+        (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return [
+        b.product?.name || '-',
+        b.current_quantity.toString(),
+        format(new Date(b.production_date), 'dd/MM/yyyy'),
+        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+        Math.abs(daysUntil) + ' hari lalu',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Produk', 'Stok', 'Produksi', 'Kadaluarsa', 'Sudah Expired']],
+      body: expiredData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [239, 68, 68],
+        textColor: [255, 255, 255],
+        fontSize: 9,
+      },
+      bodyStyles: {
+        textColor: [50, 50, 50],
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [254, 226, 226],
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 10;
+  }
+
   // Rejection Data
   const rejectedBatches = data.batches.filter(b => b.notes && b.notes.includes('REJECTED'));
   
