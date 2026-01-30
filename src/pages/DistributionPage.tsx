@@ -90,13 +90,19 @@ function DistributionPage() {
 
       console.log('=== AUTO DISTRIBUTE START ===');
       console.log('Products to distribute:', productsToDistribute.map(p => ({ name: p.name, cat: p.category })));
-      console.log('Available batches:', availableBatches?.map(b => ({ 
-        name: b.product?.name,
-        productId: b.product_id, 
-        qty: b.current_quantity,
-        expired: new Date(b.expiry_date).getTime() < new Date().getTime(),
-        rejected: b.notes?.includes('REJECTED')
-      })));
+      console.log('Available batches:', availableBatches?.map(b => {
+        const daysUntil = Math.ceil(
+          (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return {
+          productName: b.product?.name,
+          productId: b.product_id,
+          qty: b.current_quantity,
+          expiry: b.expiry_date,
+          daysUntil,
+          rejected: b.notes?.includes('REJECTED') || false
+        };
+      }));
 
       let successCount = 0;
       const distributed = new Set<string>();
@@ -113,18 +119,17 @@ function DistributionPage() {
         // Find batch yang belum expired dan belum dimusnahkan
         const batch = availableBatches?.find(b => {
           if (b.product_id !== product.id) {
-            console.log(`  ❌ Batch product_id ${b.product_id} !== ${product.id}`);
+            console.log(`  ❌ ${product.name}: Batch product_id ${b.product_id} !== ${product.id}`);
             return false;
           }
           if (b.current_quantity <= 0) {
-            console.log(`  ❌ ${product.name} qty ${b.current_quantity} <= 0`);
+            console.log(`  ❌ ${product.name}: qty ${b.current_quantity} <= 0`);
             return false;
           }
           
           // Jangan ambil batch yang sudah dimusnahkan
           if (b.notes && b.notes.includes('REJECTED')) {
-            console.log(`  ❌ ${product.name} batch rejected`);
-            failedProducts.push({name: product.name, reason: 'Batch rejected'});
+            console.log(`  ❌ ${product.name}: batch rejected`);
             return false;
           }
           
@@ -132,16 +137,19 @@ function DistributionPage() {
           const daysUntil = Math.ceil(
             (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           );
+          
+          // MUST BE >= 0 (0 hari = today, masih boleh. -1 = expired)
           if (daysUntil < 0) {
-            console.log(`  ❌ ${product.name} expired (${daysUntil} days)`);
-            failedProducts.push({name: product.name, reason: `Expired ${daysUntil} days ago`});
+            console.log(`  ❌ ${product.name}: expired (${daysUntil} days)`);
             return false;
           }
+          
+          console.log(`  ✅ ${product.name}: Valid batch found (${daysUntil} days until expiry)`);
           return true;
         });
         
         if (!batch) {
-          console.log(`⚠️ No valid batch for ${product.name} (category: ${product.category})`);
+          console.log(`⚠️ ${product.name}: No valid batch found`);
           failedProducts.push({name: product.name, reason: 'No valid batch found'});
           continue;
         }
