@@ -3,18 +3,106 @@ import { useInventoryBatches, useInventorySummary } from '@/hooks/useInventory';
 import { useDistributions } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
 import { FileText, Download, Calendar, Coffee, Package } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfWeek, startOfMonth, startOfYear, endOfWeek, endOfMonth, endOfYear, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { generateDailyReport } from '@/lib/pdfReport';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'range';
+
 function ReportsPage() {
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const today = new Date();
+  const todayStr = format(today, 'yyyy-MM-dd');
+  
+  const [filterType, setFilterType] = useState<FilterType>('daily');
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [rangeStart, setRangeStart] = useState(format(addDays(today, -7), 'yyyy-MM-dd'));
+  const [rangeEnd, setRangeEnd] = useState(todayStr);
+  
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
   const { data: distributions } = useDistributions(selectedDate);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Determine date range based on filter type
+  const getDateRange = () => {
+    const baseDate = new Date(selectedDate);
+    
+    switch (filterType) {
+      case 'daily':
+        return { start: selectedDate, end: selectedDate };
+      case 'weekly': {
+        const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(baseDate, { weekStartsOn: 1 });
+        return { 
+          start: format(weekStart, 'yyyy-MM-dd'), 
+          end: format(weekEnd, 'yyyy-MM-dd') 
+        };
+      }
+      case 'monthly': {
+        const monthStart = startOfMonth(baseDate);
+        const monthEnd = endOfMonth(baseDate);
+        return { 
+          start: format(monthStart, 'yyyy-MM-dd'), 
+          end: format(monthEnd, 'yyyy-MM-dd') 
+        };
+      }
+      case 'yearly': {
+        const yearStart = startOfYear(baseDate);
+        const yearEnd = endOfYear(baseDate);
+        return { 
+          start: format(yearStart, 'yyyy-MM-dd'), 
+          end: format(yearEnd, 'yyyy-MM-dd') 
+        };
+      }
+      case 'range':
+        return { start: rangeStart, end: rangeEnd };
+      default:
+        return { start: selectedDate, end: selectedDate };
+    }
+  };
+
+  const dateRange = getDateRange();
+
+  // Filter data based on date range
+  const filteredBatches = batches?.filter(b => {
+    const bDate = b.production_date;
+    return bDate >= dateRange.start && bDate <= dateRange.end;
+  }) || [];
+
+  const filteredDistributions = distributions?.filter(d => {
+    const dDate = d.distributed_at?.split('T')[0];
+    return dDate && dDate >= dateRange.start && dDate <= dateRange.end;
+  }) || [];
+
+  // Calculate summary stats
+  const calculateStats = (batchesData: typeof batches, distData: typeof distributions) => {
+    let totalProduced = 0;
+    let totalDistributed = 0;
+    let totalSold = 0;
+    let totalReturned = 0;
+
+    batchesData?.forEach(b => {
+      totalProduced += b.initial_quantity;
+    });
+
+    distData?.forEach(d => {
+      totalDistributed += d.quantity;
+      totalSold += d.sold_quantity || 0;
+      totalReturned += d.returned_quantity || 0;
+    });
+
+    return { totalProduced, totalDistributed, totalSold, totalReturned };
+  };
+
+  const stats = calculateStats(filteredBatches, filteredDistributions);
+
+  const todayBatches = filteredBatches || [];
+  const totalCups = summary?.filter(s => s.category === 'product')
+    .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
+  const totalAddons = summary?.filter(s => s.category === 'addon')
+    .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
 
   const handleGenerateReport = async () => {
     if (!batches || !summary) return;
@@ -23,8 +111,8 @@ function ReportsPage() {
     try {
       generateDailyReport({
         date: selectedDate,
-        batches: batches,
-        distributions: distributions || [],
+        batches: filteredBatches,
+        distributions: filteredDistributions,
         summary: summary,
       });
     } finally {
@@ -32,20 +120,27 @@ function ReportsPage() {
     }
   };
 
-  // Calculate today's summary
-  const todayBatches = batches?.filter(b => b.production_date === selectedDate) || [];
-  const totalProduced = todayBatches.reduce((acc, b) => acc + b.initial_quantity, 0);
-  const totalDistributed = distributions?.reduce((acc, d) => acc + d.quantity, 0) || 0;
-  
-  const totalCups = summary?.filter(s => s.category === 'product')
-    .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
-  const totalAddons = summary?.filter(s => s.category === 'addon')
-    .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
+  // Format display date range
+  const getDisplayDateRange = () => {
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
+    
+    if (filterType === 'daily') {
+      return format(start, 'EEEE, dd MMMM yyyy', { locale: localeId });
+    } else if (filterType === 'weekly') {
+      return `${format(start, 'dd MMM')} - ${format(end, 'dd MMMM yyyy', { locale: localeId })}`;
+    } else if (filterType === 'monthly') {
+      return format(start, 'MMMM yyyy', { locale: localeId });
+    } else if (filterType === 'yearly') {
+      return format(start, 'yyyy');
+    }
+    return `${format(start, 'dd/MM/yyyy')} - ${format(end, 'dd/MM/yyyy')}`;
+  };
 
   return (
     <PageLayout
       title="Laporan"
-      subtitle="Buat dan unduh laporan harian"
+      subtitle="Buat dan unduh laporan inventori"
       action={
         <Button
           onClick={handleGenerateReport}
@@ -59,37 +154,91 @@ function ReportsPage() {
         </Button>
       }
     >
-      {/* Date Selector */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium mb-2">Pilih Tanggal Laporan</label>
-        <div className="flex gap-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input-field max-w-xs"
-          />
-          <button
-            onClick={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
-            className="btn-outline"
-          >
-            Hari Ini
-          </button>
+      {/* Filter Type Selection */}
+      <div className="mb-6 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20">
+        <label className="block text-sm font-semibold mb-3 text-foreground">📅 Tipe Laporan</label>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            { id: 'daily', label: '📆 Harian' },
+            { id: 'weekly', label: '📊 Mingguan' },
+            { id: 'monthly', label: '📈 Bulanan' },
+            { id: 'yearly', label: '📉 Tahunan' },
+            { id: 'range', label: '📍 Custom' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setFilterType(id as FilterType)}
+              className={cn(
+                'py-2 px-3 rounded-lg text-sm font-medium transition-all border',
+                filterType === id
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-background border-border hover:border-primary/50 hover:bg-primary/5'
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <p className="text-sm text-muted-foreground mt-2">
-          Laporan: {format(new Date(selectedDate), 'EEEE, dd MMMM yyyy', { locale: localeId })}
-        </p>
+      </div>
+
+      {/* Date Selection */}
+      <div className="mb-6 p-4 bg-card border border-border rounded-lg">
+        {filterType === 'range' ? (
+          <div className="space-y-3">
+            <label className="block text-sm font-semibold">Pilih Rentang Tanggal</label>
+            <div className="flex flex-col sm:flex-row gap-3 items-center">
+              <input
+                type="date"
+                value={rangeStart}
+                onChange={(e) => setRangeStart(e.target.value)}
+                className="input-field flex-1"
+              />
+              <span className="text-muted-foreground">sampai</span>
+              <input
+                type="date"
+                value={rangeEnd}
+                onChange={(e) => setRangeEnd(e.target.value)}
+                className="input-field flex-1"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="block text-sm font-semibold">Pilih Tanggal Referensi</label>
+            <div className="flex gap-3 items-center">
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="input-field flex-1 max-w-xs"
+              />
+              <button
+                onClick={() => setSelectedDate(todayStr)}
+                className="btn-outline text-sm"
+              >
+                Hari Ini
+              </button>
+            </div>
+          </div>
+        )}
+        
+        <div className="mt-3 p-2 bg-primary/5 rounded border border-primary/20">
+          <p className="text-sm text-foreground">
+            <Calendar className="w-4 h-4 inline mr-2" />
+            <strong>Periode:</strong> {getDisplayDateRange()}
+          </p>
+        </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="stat-card bg-primary/5 border-primary/20">
           <div className="flex items-center gap-2 mb-2">
             <Coffee className="w-5 h-5 text-primary" />
             <span className="text-sm font-medium">Total Cup</span>
           </div>
           <p className="stat-value text-primary">{totalCups}</p>
-          <p className="text-xs text-muted-foreground">produk di inventori</p>
+          <p className="text-xs text-muted-foreground">stok saat ini</p>
         </div>
         <div className="stat-card bg-secondary/5 border-secondary/20">
           <div className="flex items-center gap-2 mb-2">
@@ -97,23 +246,45 @@ function ReportsPage() {
             <span className="text-sm font-medium">Total Add-on</span>
           </div>
           <p className="stat-value text-secondary">{totalAddons}</p>
-          <p className="text-xs text-muted-foreground">tidak dihitung cup</p>
+          <p className="text-xs text-muted-foreground">stok saat ini</p>
+        </div>
+        <div className="stat-card bg-green-500/5 border-green-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium">📦 Diproduksi</span>
+          </div>
+          <p className="stat-value text-green-600">{stats.totalProduced}</p>
+          <p className="text-xs text-muted-foreground">periode ini</p>
+        </div>
+        <div className="stat-card bg-blue-500/5 border-blue-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium">📈 Terjual</span>
+          </div>
+          <p className="stat-value text-blue-600">{stats.totalSold}</p>
+          <p className="text-xs text-muted-foreground">periode ini</p>
         </div>
       </div>
 
-      {/* Day Summary */}
+      {/* Period Summary */}
       <div className="table-container mb-6">
         <div className="p-4 border-b border-border">
-          <h3 className="font-semibold">Ringkasan Tanggal Terpilih</h3>
+          <h3 className="font-semibold">📊 Ringkasan Periode</h3>
         </div>
         <div className="p-4 space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Produksi</span>
-            <span className="font-medium">{totalProduced} unit dari {todayBatches.length} batch</span>
+          <div className="flex justify-between items-center py-2 border-b border-border/50">
+            <span className="text-muted-foreground">Total Diproduksi</span>
+            <span className="font-semibold text-lg">{stats.totalProduced} unit</span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Distribusi</span>
-            <span className="font-medium">{totalDistributed} unit ke {new Set(distributions?.map(d => d.rider_id)).size} rider</span>
+          <div className="flex justify-between items-center py-2 border-b border-border/50">
+            <span className="text-muted-foreground">Total Didistribusi</span>
+            <span className="font-semibold text-lg">{stats.totalDistributed} unit</span>
+          </div>
+          <div className="flex justify-between items-center py-2 border-b border-border/50">
+            <span className="text-muted-foreground">Total Terjual</span>
+            <span className="font-semibold text-lg text-green-600">{stats.totalSold} unit</span>
+          </div>
+          <div className="flex justify-between items-center py-2">
+            <span className="text-muted-foreground">Total Dikembalikan</span>
+            <span className="font-semibold text-lg text-orange-600">{stats.totalReturned} unit</span>
           </div>
         </div>
       </div>
@@ -162,18 +333,18 @@ function ReportsPage() {
       </div>
 
       {/* Production Batches for Selected Date */}
-      {todayBatches.length > 0 && (
+      {filteredBatches.length > 0 && (
         <div className="table-container mt-6">
           <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">Produksi Tanggal Ini</h3>
+            <h3 className="font-semibold">🏭 Produksi Periode Ini</h3>
           </div>
           <div className="divide-y divide-border">
-            {todayBatches.map((batch) => (
+            {filteredBatches.map((batch) => (
               <div key={batch.id} className="p-4 flex items-center justify-between">
                 <div>
                   <p className="font-medium">{batch.product?.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    Exp: {format(new Date(batch.expiry_date), 'dd MMMM yyyy', { locale: localeId })}
+                    Produksi: {format(new Date(batch.production_date), 'dd MMMM', { locale: localeId })} • Exp: {format(new Date(batch.expiry_date), 'dd MMMM yyyy', { locale: localeId })}
                   </p>
                 </div>
                 <div className="text-right">
@@ -187,25 +358,25 @@ function ReportsPage() {
       )}
 
       {/* Distributions for Selected Date */}
-      {distributions && distributions.length > 0 && (
+      {filteredDistributions && filteredDistributions.length > 0 && (
         <div className="table-container mt-6">
           <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">Distribusi Tanggal Ini</h3>
+            <h3 className="font-semibold">🚚 Distribusi Periode Ini</h3>
           </div>
           <div className="divide-y divide-border">
-            {distributions.map((dist) => (
+            {filteredDistributions.map((dist) => (
               <div key={dist.id} className="p-4 flex items-center justify-between">
                 <div>
                   <p className="font-medium">{dist.rider?.name}</p>
                   <p className="text-sm text-muted-foreground">{dist.batch?.product?.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    Batch: {format(new Date(dist.batch?.production_date || ''), 'dd/MM')} - {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM')}
+                    Batch: {format(new Date(dist.batch?.production_date || ''), 'dd/MM')} - Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM')}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">{dist.quantity} unit</p>
                   <p className="text-xs text-muted-foreground">
-                    {format(new Date(dist.distributed_at), 'HH:mm')}
+                    Terjual: {dist.sold_quantity || 0} • Retur: {dist.returned_quantity || 0}
                   </p>
                 </div>
               </div>

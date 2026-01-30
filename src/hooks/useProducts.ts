@@ -42,6 +42,31 @@ export function useAddProduct() {
   });
 }
 
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, name, category }: { id: string; name: string; category: ProductCategory }) => {
+      const { data, error } = await supabase
+        .from('products')
+        .update({ name, category })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as Product;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Produk berhasil diperbarui');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal memperbarui produk: ' + error.message);
+    },
+  });
+}
+
 export function useDeleteProduct() {
   const queryClient = useQueryClient();
 

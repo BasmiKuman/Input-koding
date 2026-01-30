@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useRiders, useAddRider } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
-import { useDistributions, useAddDistribution, useBulkDistribution } from '@/hooks/useDistributions';
+import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
-import { Truck, Plus, User, Package, Send, Check, X } from 'lucide-react';
+import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -33,10 +34,13 @@ function DistributionPage() {
   const addRider = useAddRider();
   const addDistribution = useAddDistribution();
   const bulkDistribution = useBulkDistribution();
+  const adjustRiderStock = useAdjustRiderStock();
 
   const [isRiderOpen, setIsRiderOpen] = useState(false);
   const [isDistOpen, setIsDistOpen] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [adjustmentRiderId, setAdjustmentRiderId] = useState<string | null>(null);
+  const [adjustmentStates, setAdjustmentStates] = useState<Record<string, { action: 'sell' | 'return' | 'reject'; amount: string }>>({});
   
   // Rider form
   const [riderName, setRiderName] = useState('');
@@ -86,6 +90,70 @@ function DistributionPage() {
     setSelectedBatches([]);
     setBulkQuantity('5');
     setIsBulkOpen(false);
+  };
+
+  const handleAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustmentRiderId) return;
+    
+    const riderDists = todayDistributions?.filter(d => d.rider_id === adjustmentRiderId) || [];
+    
+    console.log('🚀 handleAdjustment started');
+    console.log('Rider Dists:', riderDists.length);
+    console.log('Adjustment States:', adjustmentStates);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const dist of riderDists) {
+      const state = adjustmentStates[dist.id];
+      
+      console.log(`Processing dist ${dist.batch?.product?.name}:`, state);
+      
+      // Skip jika tidak ada state atau amount
+      if (!state?.amount || parseInt(state.amount) <= 0) {
+        console.log('  → Skipped (no amount)');
+        continue;
+      }
+      
+      try {
+        const amount = parseInt(state.amount);
+        console.log(`  → Mutating: action=${state.action}, amount=${amount}`);
+        
+        await adjustRiderStock.mutateAsync({
+          id: dist.id,
+          action: state.action || 'sell',
+          amount: amount,
+        });
+        successCount++;
+        console.log(`  → Success!`);
+      } catch (error) {
+        errorCount++;
+        console.error('Error adjusting distribution', dist.id, error);
+        toast.error(`Gagal update ${dist.batch?.product?.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+    
+    console.log(`✅ Done - Success: ${successCount}, Error: ${errorCount}`);
+    
+    if (successCount > 0) {
+      toast.success(`${successCount} item berhasil diupdate!`);
+    } else if (errorCount === 0 && riderDists.length > 0) {
+      toast.info('Tidak ada perubahan yang diinput');
+    }
+    
+    setAdjustmentRiderId(null);
+    setAdjustmentStates({});
+  };
+
+  const updateAdjustmentState = (distId: string, field: 'action' | 'amount', value: string) => {
+    setAdjustmentStates(prev => ({
+      ...prev,
+      [distId]: {
+        ...prev[distId],
+        [field]: value,
+      },
+    }));
   };
 
   const toggleBatchSelection = (batchId: string) => {
@@ -355,48 +423,143 @@ function DistributionPage() {
           <Truck className="w-5 h-5 text-success" />
           <h2 className="font-semibold">Distribusi Hari Ini</h2>
         </div>
-        <div className="table-container">
-          <AnimatePresence>
-            {todayDistributions?.map((dist, index) => (
-              <motion.div
-                key={dist.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="p-4 border-b border-border last:border-0"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
-                      <Truck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{dist.rider?.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {dist.batch?.product?.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Batch: {format(new Date(dist.batch?.production_date || ''), 'dd/MM')} - {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM')}
-                      </p>
+
+        {(!todayDistributions || todayDistributions.length === 0) ? (
+          <div className="p-8 text-center text-muted-foreground bg-muted/30 rounded-lg">
+            <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>Belum ada distribusi hari ini</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {/* Get unique riders for today */}
+            {Array.from(new Set(todayDistributions.map(d => d.rider_id))).map((riderId) => {
+              const riderDists = todayDistributions.filter(d => d.rider_id === riderId);
+              const rider = riderDists[0]?.rider;
+              const isOpen = adjustmentRiderId === riderId;
+
+              return (
+                <div key={riderId} className="border border-border rounded-lg overflow-hidden">
+                  <div 
+                    className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
+                    onClick={() => setAdjustmentRiderId(isOpen ? null : riderId)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                          <User className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{rider?.name}</p>
+                          <p className="text-sm text-muted-foreground">{riderDists.length} produk</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">{riderDists.reduce((acc, d) => acc + d.quantity, 0)} unit</p>
+                        <p className="text-xs text-muted-foreground">
+                          Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{dist.quantity} unit</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(dist.distributed_at), 'HH:mm')}
-                    </p>
-                  </div>
+
+                  {/* Expanded content */}
+                  {isOpen && (
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-border overflow-hidden"
+                      >
+                        <div className="p-4 space-y-3 bg-muted/20">
+                          {riderDists.map((dist) => {
+                            const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
+                            const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
+
+                            return (
+                              <div key={dist.id} className="border border-border rounded-lg p-3 space-y-3 bg-card">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <p className="font-medium text-sm">{dist.batch?.product?.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM/yy')}
+                                    </p>
+                                  </div>
+                                  <div className="text-right text-xs">
+                                    <p className="font-semibold">{dist.quantity} unit</p>
+                                    <p className="text-muted-foreground">
+                                      📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ⭘ {remaining}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-xs font-medium mb-1 block">Aksi</label>
+                                    <Select 
+                                      value={state.action || 'sell'} 
+                                      onValueChange={(val) => updateAdjustmentState(dist.id, 'action', val as 'sell' | 'return' | 'reject')}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="sell">Terjual</SelectItem>
+                                        <SelectItem value="return">Dikembalikan</SelectItem>
+                                        <SelectItem value="reject">Ditolak</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-medium mb-1 block">Jumlah</label>
+                                    <input
+                                      type="number"
+                                      value={state.amount || ''}
+                                      onChange={(e) => updateAdjustmentState(dist.id, 'amount', e.target.value)}
+                                      placeholder="0"
+                                      className="input-field h-8 text-xs"
+                                      min="0"
+                                      max={remaining}
+                                    />
+                                  </div>
+                                  <div className="flex items-end">
+                                    <div className="text-xs text-muted-foreground w-full">
+                                      Maks: {remaining}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
+                            <Button
+                              type="submit"
+                              className="flex-1"
+                              disabled={adjustRiderStock.isPending}
+                            >
+                              {adjustRiderStock.isPending ? 'Menyimpan...' : 'Simpan Semua Perubahan'}
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdjustmentRiderId(null);
+                                setAdjustmentStates({});
+                              }}
+                              className="btn-outline px-4"
+                            >
+                              Batal
+                            </button>
+                          </form>
+                        </div>
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
                 </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {(!todayDistributions || todayDistributions.length === 0) && (
-            <div className="p-8 text-center text-muted-foreground">
-              <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Belum ada distribusi hari ini</p>
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </PageLayout>
   );

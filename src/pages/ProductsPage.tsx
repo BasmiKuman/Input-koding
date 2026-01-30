@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useProducts, useAddProduct, useDeleteProduct } from '@/hooks/useProducts';
+import { useProducts, useAddProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
-import { Package, Plus, Trash2, Coffee, Cookie } from 'lucide-react';
+import { Package, Plus, Trash2, Coffee, Cookie, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { ProductCategory } from '@/types/database';
@@ -17,8 +17,10 @@ import { Button } from '@/components/ui/button';
 function ProductsPage() {
   const { data: products, isLoading } = useProducts();
   const addProduct = useAddProduct();
+  const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
   const [isOpen, setIsOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('product');
 
@@ -26,10 +28,29 @@ function ProductsPage() {
     e.preventDefault();
     if (!name.trim()) return;
 
-    await addProduct.mutateAsync({ name: name.trim(), category });
+    if (editingId) {
+      await updateProduct.mutateAsync({ id: editingId, name: name.trim(), category });
+      setEditingId(null);
+    } else {
+      await addProduct.mutateAsync({ name: name.trim(), category });
+    }
     setName('');
     setCategory('product');
     setIsOpen(false);
+  };
+
+  const handleEdit = (id: string, currentName: string, currentCategory: ProductCategory) => {
+    setEditingId(id);
+    setName(currentName);
+    setCategory(currentCategory);
+    setIsOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setIsOpen(false);
+    setEditingId(null);
+    setName('');
+    setCategory('product');
   };
 
   const handleDelete = async (id: string) => {
@@ -53,9 +74,9 @@ function ProductsPage() {
               <span className="hidden sm:inline">Tambah</span>
             </button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
             <DialogHeader>
-              <DialogTitle>Tambah Produk Baru</DialogTitle>
+              <DialogTitle>{editingId ? 'Edit Produk' : 'Tambah Produk Baru'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div>
@@ -108,13 +129,25 @@ function ProductsPage() {
                   </button>
                 </div>
               </div>
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={!name.trim() || addProduct.isPending}
-              >
-                {addProduct.isPending ? 'Menyimpan...' : 'Simpan Produk'}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  type="submit" 
+                  className="flex-1"
+                  disabled={!name.trim() || (editingId ? updateProduct.isPending : addProduct.isPending)}
+                >
+                  {editingId ? 
+                    (updateProduct.isPending ? 'Menyimpan...' : 'Simpan Perubahan') 
+                    : (addProduct.isPending ? 'Menyimpan...' : 'Simpan Produk')
+                  }
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCloseDialog}
+                  className="btn-outline"
+                >
+                  Batal
+                </Button>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
@@ -146,12 +179,20 @@ function ProductsPage() {
                     <span className="badge-success">Cup</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(product.id)}
-                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(product.id, product.name, product.category)}
+                    className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(product.id)}
+                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -190,12 +231,20 @@ function ProductsPage() {
                     <span className="bg-secondary/10 text-secondary px-2 py-0.5 rounded-full text-xs font-medium">Add-on</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(product.id)}
-                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(product.id, product.name, product.category)}
+                    className="p-2 text-muted-foreground hover:text-secondary transition-colors"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(product.id)}
+                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </AnimatePresence>

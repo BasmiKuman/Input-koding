@@ -262,3 +262,110 @@ export function useUpdateDistribution() {
     },
   });
 }
+
+export function useAdjustRiderStock() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      action,
+      amount,
+    }: {
+      id: string;
+      action: 'sell' | 'return' | 'reject';
+      amount: number;
+    }) => {
+      // Get current distribution
+      const { data: distData, error: distError } = await supabase
+        .from('distributions')
+        .select('batch_id, quantity, sold_quantity, returned_quantity, notes')
+        .eq('id', id)
+        .single();
+
+      if (distError) throw distError;
+
+      const dist = distData as {
+        batch_id: string;
+        quantity: number;
+        sold_quantity: number;
+        returned_quantity: number;
+        notes?: string;
+      } | null;
+
+      if (!dist) throw new Error('Distribution not found');
+
+      if (amount <= 0) throw new Error('Amount harus lebih besar dari 0');
+
+      const remainingWithRider = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
+      if (amount > remainingWithRider) throw new Error('Jumlah melebihi stok rider saat ini');
+
+      if (action === 'sell') {
+        const newSold = (dist.sold_quantity || 0) + amount;
+        const { error } = await supabase
+          .from('distributions')
+          .update({ sold_quantity: newSold })
+          .eq('id', id);
+
+        if (error) throw error;
+        return;
+      }
+
+      if (action === 'return') {
+        const newReturned = (dist.returned_quantity || 0) + amount;
+
+        // Add returned items back to inventory batch
+        const { data: batchData, error: batchError } = await supabase
+          .from('inventory_batches')
+          .select('current_quantity')
+          .eq('id', dist.batch_id)
+          .single();
+
+        if (batchError) throw batchError;
+
+        const batch = batchData as { current_quantity: number } | null;
+        if (batch) {
+          const { error: updateBatchError } = await supabase
+            .from('inventory_batches')
+            .update({ current_quantity: batch.current_quantity + amount })
+            .eq('id', dist.batch_id);
+
+          if (updateBatchError) throw updateBatchError;
+        }
+
+        const { error } = await supabase
+          .from('distributions')
+          .update({ returned_quantity: newReturned })
+          .eq('id', id);
+
+        if (error) throw error;
+        return;
+      }
+
+      if (action === 'reject') {
+        // For rejects, we remove the items from the rider (and do NOT add them back to inventory)
+        // We'll decrease the distribution.quantity by the rejected amount and append notes.
+        const newQuantity = dist.quantity - amount;
+        const newNotes = `${dist.notes || ''}${dist.notes ? ' | ' : ''}rejected:${amount}`;
+
+        const { error } = await supabase
+          .from('distributions')
+          .update({ quantity: newQuantity, notes: newNotes })
+          .eq('id', id);
+
+        if (error) throw error;
+        return;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['distributions'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
+      toast.success('Stok rider berhasil diperbarui');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal memperbarui stok rider: ' + error.message);
+    },
+  });
+}

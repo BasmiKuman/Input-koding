@@ -31,7 +31,28 @@ function ProductionPage() {
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [productionDate, setProductionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [expiryDate, setExpiryDate] = useState(format(addDays(new Date(), 3), 'yyyy-MM-dd'));
+  const [expiryDate, setExpiryDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+
+  // Get selected product to determine expiry days
+  const selectedProduct = products?.find(p => p.id === productId);
+  const expiryDays = selectedProduct?.category === 'product' ? 7 : 3;
+
+  // Auto-update expiry when product changes
+  const handleProductChange = (value: string) => {
+    setProductId(value);
+    const product = products?.find(p => p.id === value);
+    const days = product?.category === 'product' ? 7 : 3;
+    const newExpiryDate = format(addDays(new Date(productionDate), days), 'yyyy-MM-dd');
+    setExpiryDate(newExpiryDate);
+  };
+
+  // Auto-update expiry when production date changes
+  const handleProductionDateChange = (value: string) => {
+    setProductionDate(value);
+    const days = selectedProduct?.category === 'product' ? 7 : 3;
+    const newExpiryDate = format(addDays(new Date(value), days), 'yyyy-MM-dd');
+    setExpiryDate(newExpiryDate);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +68,7 @@ function ProductionPage() {
     setProductId('');
     setQuantity('');
     setProductionDate(format(new Date(), 'yyyy-MM-dd'));
-    setExpiryDate(format(addDays(new Date(), 3), 'yyyy-MM-dd'));
+    setExpiryDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
     setIsOpen(false);
   };
 
@@ -97,7 +118,7 @@ function ProductionPage() {
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Produk</label>
-                <Select value={productId} onValueChange={setProductId}>
+                <Select value={productId} onValueChange={handleProductChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Pilih produk" />
                   </SelectTrigger>
@@ -109,6 +130,11 @@ function ProductionPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedProduct && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Expired default: {expiryDays} hari dari tanggal produksi
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Jumlah Produksi</label>
@@ -127,7 +153,7 @@ function ProductionPage() {
                   <input
                     type="date"
                     value={productionDate}
-                    onChange={(e) => setProductionDate(e.target.value)}
+                    onChange={(e) => handleProductionDateChange(e.target.value)}
                     className="input-field"
                   />
                 </div>
@@ -140,6 +166,11 @@ function ProductionPage() {
                     className="input-field"
                     min={productionDate}
                   />
+                  {selectedProduct && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ({expiryDays} hari otomatis)
+                    </p>
+                  )}
                 </div>
               </div>
               <Button 
