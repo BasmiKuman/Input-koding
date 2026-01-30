@@ -84,33 +84,59 @@ function DistributionPage() {
         );
       }) || [];
 
+      console.log('Products to distribute:', productsToDistribute.map(p => p.name));
+      console.log('Available batches:', availableBatches?.map(b => ({ 
+        name: b.product?.name, 
+        qty: b.current_quantity,
+        expired: new Date(b.expiry_date).getTime() < new Date().getTime(),
+        rejected: b.notes?.includes('REJECTED')
+      })));
+
       let successCount = 0;
       const distributed = new Set<string>();
+      const failedProducts: string[] = [];
       
       for (const product of productsToDistribute) {
         // Prevent duplicate distribution of same product
-        if (distributed.has(product.id)) continue;
+        if (distributed.has(product.id)) {
+          console.log(`Skipping ${product.name} - already distributed`);
+          continue;
+        }
         distributed.add(product.id);
 
         // Find batch yang belum expired dan belum dimusnahkan
         const batch = availableBatches?.find(b => {
-          if (b.product_id !== product.id || b.current_quantity <= 0) return false;
+          if (b.product_id !== product.id) return false;
+          if (b.current_quantity <= 0) return false;
           
           // Jangan ambil batch yang sudah dimusnahkan
-          if (b.notes && b.notes.includes('REJECTED')) return false;
+          if (b.notes && b.notes.includes('REJECTED')) {
+            console.log(`${product.name} batch rejected`);
+            return false;
+          }
           
           // Jangan ambil batch yang sudah expired
           const daysUntil = Math.ceil(
             (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           );
-          return daysUntil >= 0;
+          if (daysUntil < 0) {
+            console.log(`${product.name} expired (${daysUntil} days)`);
+            return false;
+          }
+          return true;
         });
         
-        if (!batch) continue;
+        if (!batch) {
+          console.log(`No valid batch found for ${product.name}`);
+          failedProducts.push(product.name);
+          continue;
+        }
 
         const quantity = product.category === 'addon' 
           ? 5 
           : (DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5);
+
+        console.log(`Distributing ${product.name}: ${quantity} from batch ${batch.id}`);
 
         try {
           await addDistribution.mutateAsync({
@@ -121,13 +147,17 @@ function DistributionPage() {
           successCount++;
         } catch (error) {
           console.error('Error distributing', product.name, error);
+          failedProducts.push(product.name);
         }
       }
 
       if (successCount === 0) {
         toast.warning('Tidak ada batch yang tersedia untuk didistribusikan (semua expired atau sudah dimusnahkan)');
       } else {
-        toast.success(`${successCount} produk berhasil didistribusi!`);
+        const msg = failedProducts.length > 0 
+          ? `${successCount} produk berhasil, gagal: ${failedProducts.join(', ')}`
+          : `${successCount} produk berhasil didistribusi!`;
+        toast.success(msg);
       }
       setAutoDistributionRiderId(null);
       setAutoDistributionMode(null);
