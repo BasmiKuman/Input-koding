@@ -765,50 +765,61 @@ function DistributionPage() {
         ) : (
           <div className="space-y-2">
             {/* Get unique riders for today */}
-            {Array.from(new Set(todayDistributions.map(d => d.rider_id))).map((riderId) => {
-              const riderDists = todayDistributions.filter(d => d.rider_id === riderId);
-              const rider = riderDists[0]?.rider;
-              const isOpen = adjustmentRiderId === riderId;
+            {Array.from(new Set(todayDistributions.map(d => d.rider_id)))
+              .map((riderId) => {
+                const riderDists = todayDistributions.filter(d => d.rider_id === riderId);
+                
+                // Filter produk yang masih punya stok sisa (remaining > 0)
+                const activeDists = riderDists.filter(dist => {
+                  const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
+                  return remaining > 0;
+                });
+                
+                // Skip rider jika semua produk sudah habis
+                if (activeDists.length === 0) return null;
+                
+                const rider = riderDists[0]?.rider;
+                const isOpen = adjustmentRiderId === riderId;
 
-              return (
-                <div key={riderId} className="border border-border rounded-lg overflow-hidden">
-                  <div 
-                    className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
-                    onClick={() => setAdjustmentRiderId(isOpen ? null : riderId)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
-                          <User className="w-5 h-5" />
+                return (
+                  <div key={riderId} className="border border-border rounded-lg overflow-hidden">
+                    <div 
+                      className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
+                      onClick={() => setAdjustmentRiderId(isOpen ? null : riderId)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                            <User className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-semibold">{rider?.name}</p>
+                            <p className="text-sm text-muted-foreground">{activeDists.length} produk</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold">{rider?.name}</p>
-                          <p className="text-sm text-muted-foreground">{riderDists.length} produk</p>
+                        <div className="text-right text-xs">
+                          <p className="text-sm font-medium">{activeDists.reduce((acc, d) => acc + (d.quantity - (d.sold_quantity || 0) - (d.returned_quantity || 0)), 0)} unit</p>
+                          <p className="text-muted-foreground">
+                            📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
+                          </p>
                         </div>
-                      </div>
-                      <div className="text-right text-xs">
-                        <p className="text-sm font-medium">{riderDists.reduce((acc, d) => acc + d.quantity, 0)} unit</p>
-                        <p className="text-muted-foreground">
-                          📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
-                        </p>
-                        <p className="text-muted-foreground">
-                          🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
-                        </p>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Expanded content */}
-                  {isOpen && (
-                    <AnimatePresence>
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-border overflow-hidden"
-                      >
-                        <div className="p-4 space-y-3 bg-muted/20">
-                          {riderDists.map((dist) => {
+                    {/* Expanded content */}
+                    {isOpen && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="border-t border-border overflow-hidden"
+                        >
+                          <div className="p-4 space-y-3 bg-muted/20">
+                            {activeDists.map((dist) => {
                             const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
                             const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
 
@@ -901,7 +912,7 @@ function DistributionPage() {
                   )}
                 </div>
               );
-            })}
+            }).filter(Boolean)}
           </div>
         )}
       </div>
