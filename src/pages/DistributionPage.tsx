@@ -249,15 +249,17 @@ function DistributionPage() {
     
     let successCount = 0;
     let errorCount = 0;
+    let skippedCount = 0;
     
     for (const dist of riderDists) {
       const state = adjustmentStates[dist.id];
       
-      console.log(`Processing dist ${dist.batch?.product?.name}:`, state);
+      console.log(`Processing dist ${dist.id} (${dist.batch?.product?.name}):`, state);
       
       // Skip jika tidak ada state atau amount
       if (!state?.amount || parseInt(state.amount) <= 0) {
-        console.log('  → Skipped (no amount)');
+        console.log(`  → Skipped (${dist.batch?.product?.name}) - no amount or 0`);
+        skippedCount++;
         continue;
       }
       
@@ -279,7 +281,7 @@ function DistributionPage() {
       }
     }
     
-    console.log(`✅ Done - Success: ${successCount}, Error: ${errorCount}`);
+    console.log(`✅ Done - Success: ${successCount}, Error: ${errorCount}, Skipped: ${skippedCount}`);
     
     if (successCount > 0) {
       toast.success(`${successCount} item berhasil diupdate!`);
@@ -856,8 +858,16 @@ function DistributionPage() {
                                       max={remaining}
                                     />
                                   </div>
-                                  <div className="flex items-end">
-                                    <div className="text-xs text-muted-foreground w-full">
+                                  <div className="flex items-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateAdjustmentState(dist.id, 'amount', remaining.toString())}
+                                      className="btn-secondary text-xs h-8 px-2 whitespace-nowrap"
+                                      title="Isi dengan jumlah maksimal"
+                                    >
+                                      Semua
+                                    </button>
+                                    <div className="text-xs text-muted-foreground">
                                       Maks: {remaining}
                                     </div>
                                   </div>
