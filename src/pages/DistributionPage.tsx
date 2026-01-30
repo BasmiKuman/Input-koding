@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRiders, useAddRider } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
 import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock } from '@/hooks/useDistributions';
+import { useProducts } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
 import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,6 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 function DistributionPage() {
   const { data: riders } = useRiders();
   const { data: availableBatches } = useAvailableBatches();
+  const { data: allProducts } = useProducts();
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayDistributions } = useDistributions(today);
   const addRider = useAddRider();
@@ -41,6 +43,8 @@ function DistributionPage() {
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [adjustmentRiderId, setAdjustmentRiderId] = useState<string | null>(null);
   const [adjustmentStates, setAdjustmentStates] = useState<Record<string, { action: 'sell' | 'return' | 'reject'; amount: string }>>({});
+  const [autoDistributionRiderId, setAutoDistributionRiderId] = useState<string | null>(null);
+  const [autoDistributionMode, setAutoDistributionMode] = useState<'default' | 'custom' | null>(null);
   
   // Rider form
   const [riderName, setRiderName] = useState('');
@@ -55,6 +59,62 @@ function DistributionPage() {
   const [bulkRider, setBulkRider] = useState('');
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [bulkQuantity, setBulkQuantity] = useState('5');
+
+  // Default distribution config
+  const DEFAULT_DISTRIBUTION_CONFIG = {
+    'Kopi Aren': 30,
+    'Matcha': 5,
+    'Coklat': 5,
+    'Taro Bubblegum': 5,
+  };
+
+  const handleAutoDistribute = async (mode: 'default' | 'custom') => {
+    if (!autoDistributionRiderId) return;
+    
+    if (mode === 'default') {
+      // Auto-distribute default products
+      const productsToDistribute = allProducts?.filter(p => {
+        const name = p.name.toLowerCase();
+        // Include default products and all add-ons (except those matching specific product names)
+        if (p.category === 'addon') return true;
+        return Object.keys(DEFAULT_DISTRIBUTION_CONFIG).some(key => 
+          name.includes(key.toLowerCase())
+        );
+      }) || [];
+
+      let successCount = 0;
+      
+      for (const product of productsToDistribute) {
+        const batch = availableBatches?.find(b => b.product_id === product.id);
+        if (!batch) continue;
+
+        const quantity = product.category === 'addon' 
+          ? 5 
+          : DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5;
+
+        try {
+          await addDistribution.mutateAsync({
+            rider_id: autoDistributionRiderId,
+            batch_id: batch.id,
+            quantity: quantity,
+          });
+          successCount++;
+        } catch (error) {
+          console.error('Error distributing', product.name, error);
+        }
+      }
+
+      toast.success(`${successCount} produk berhasil didistribusi!`);
+      setAutoDistributionRiderId(null);
+      setAutoDistributionMode(null);
+    } else {
+      // Custom distribution - open bulk dialog with this rider pre-selected
+      setBulkRider(autoDistributionRiderId);
+      setAutoDistributionRiderId(null);
+      setAutoDistributionMode(null);
+      setIsBulkOpen(true);
+    }
+  };
 
   const handleAddRider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,9 +454,13 @@ function DistributionPage() {
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2">
           {riders?.map((rider) => (
-            <div
+            <button
               key={rider.id}
-              className="flex-shrink-0 bg-card border border-border rounded-lg px-4 py-3 min-w-[120px]"
+              onClick={() => {
+                setAutoDistributionRiderId(rider.id);
+                setAutoDistributionMode(null); // Show modal
+              }}
+              className="flex-shrink-0 bg-card border border-border rounded-lg px-4 py-3 min-w-[140px] hover:border-primary hover:bg-primary/5 transition-all cursor-pointer text-left"
             >
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
@@ -409,12 +473,194 @@ function DistributionPage() {
                   )}
                 </div>
               </div>
-            </div>
+            </button>
           ))}
           {(!riders || riders.length === 0) && (
             <p className="text-sm text-muted-foreground">Belum ada rider</p>
           )}
         </div>
+
+        {/* Auto Distribution Mode Selection Modal */}
+        <AnimatePresence>
+          {autoDistributionRiderId && autoDistributionMode === null && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+              onClick={() => {
+                setAutoDistributionRiderId(null);
+                setAutoDistributionMode(null);
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-card border border-border rounded-lg p-6 max-w-sm mx-4 shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-semibold mb-4">
+                  Distribusi ke {riders?.find(r => r.id === autoDistributionRiderId)?.name}
+                </h3>
+                
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleAutoDistribute('default')}
+                    className="w-full p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors text-left"
+                    disabled={addDistribution.isPending}
+                  >
+                    <p className="font-medium">📦 Default Distribution</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Kopi Aren 30pcs, Matcha/Coklat/Taro 5pcs, Add-on 5pcs
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setAutoDistributionMode('custom')}
+                    className="w-full p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors text-left"
+                  >
+                    <p className="font-medium">⚙️ Custom Distribution</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Pilih produk dan jumlah secara manual
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setAutoDistributionRiderId(null);
+                      setAutoDistributionMode(null);
+                    }}
+                    className="w-full p-2 text-center text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Custom Distribution Modal */}
+        <AnimatePresence>
+          {autoDistributionRiderId && autoDistributionMode === 'custom' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+              onClick={() => {
+                setAutoDistributionRiderId(null);
+                setAutoDistributionMode(null);
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-card border border-border rounded-lg p-6 max-w-md mx-4 shadow-lg max-h-[80vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-semibold mb-4">
+                  Custom Distribution untuk {riders?.find(r => r.id === autoDistributionRiderId)?.name}
+                </h3>
+                
+                <div className="space-y-3 mb-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Jumlah per Produk</label>
+                    <input
+                      type="number"
+                      value={bulkQuantity}
+                      onChange={(e) => setBulkQuantity(e.target.value)}
+                      placeholder="Jumlah untuk setiap produk"
+                      className="input-field"
+                      min="1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Jumlah ini akan dikirim untuk setiap produk yang dipilih
+                    </p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium">Pilih Produk</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedBatches.length === availableBatches?.length) {
+                            setSelectedBatches([]);
+                          } else {
+                            setSelectedBatches(availableBatches?.map(b => b.id) || []);
+                          }
+                        }}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        {selectedBatches.length === availableBatches?.length ? 'Hapus Semua' : 'Pilih Semua'}
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-60 overflow-y-auto border border-border rounded-lg p-2">
+                      {availableBatches?.map((batch) => (
+                        <label
+                          key={batch.id}
+                          className={cn(
+                            'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
+                            selectedBatches.includes(batch.id)
+                              ? 'bg-primary/10 border border-primary/20'
+                              : 'bg-muted/50 hover:bg-muted'
+                          )}
+                        >
+                          <Checkbox
+                            checked={selectedBatches.includes(batch.id)}
+                            onCheckedChange={() => {
+                              setSelectedBatches(prev => 
+                                prev.includes(batch.id) 
+                                  ? prev.filter(id => id !== batch.id)
+                                  : [...prev, batch.id]
+                              );
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{batch.product?.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Stok: {batch.current_quantity} • Exp: {format(new Date(batch.expiry_date), 'dd/MM')}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                      {(!availableBatches || availableBatches.length === 0) && (
+                        <p className="text-center text-muted-foreground py-4">
+                          Tidak ada stok tersedia
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAutoDistribute('custom')}
+                    className="flex-1 btn-primary"
+                    disabled={selectedBatches.length === 0 || addDistribution.isPending}
+                  >
+                    {addDistribution.isPending 
+                      ? 'Memproses...' 
+                      : `Kirim ${selectedBatches.length} Produk`
+                    }
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAutoDistributionRiderId(null);
+                      setAutoDistributionMode(null);
+                      setSelectedBatches([]);
+                    }}
+                    className="btn-outline px-4"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Today's Distributions */}
