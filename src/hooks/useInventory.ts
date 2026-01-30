@@ -8,7 +8,7 @@ export function useInventoryBatches() {
     queryKey: ['inventory-batches'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('inventory_batches')
+        .from('inventory_batches' as never)
         .select(`
           *,
           product:products(*)
@@ -26,7 +26,7 @@ export function useAvailableBatches() {
     queryKey: ['available-batches'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('inventory_batches')
+        .from('inventory_batches' as never)
         .select(`
           *,
           product:products(*)
@@ -45,7 +45,7 @@ export function useInventorySummary() {
     queryKey: ['inventory-summary'],
     queryFn: async () => {
       const { data: batches, error: batchError } = await supabase
-        .from('inventory_batches')
+        .from('inventory_batches' as never)
         .select(`
           *,
           product:products(*)
@@ -55,7 +55,7 @@ export function useInventorySummary() {
       if (batchError) throw batchError;
 
       const { data: distributions, error: distError } = await supabase
-        .from('distributions')
+        .from('distributions' as never)
         .select('*');
 
       if (distError) throw distError;
@@ -122,14 +122,14 @@ export function useAddBatch() {
       initial_quantity: number;
     }) => {
       const { data, error } = await supabase
-        .from('inventory_batches')
+        .from('inventory_batches' as never)
         .insert([{
           product_id,
           production_date,
           expiry_date,
           initial_quantity,
           current_quantity: initial_quantity,
-        }])
+        }] as never)
         .select()
         .single();
       
@@ -154,8 +154,8 @@ export function useUpdateBatchQuantity() {
   return useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
       const { error } = await supabase
-        .from('inventory_batches')
-        .update({ current_quantity: quantity })
+        .from('inventory_batches' as never)
+        .update({ current_quantity: quantity } as never)
         .eq('id', id);
       
       if (error) throw error;

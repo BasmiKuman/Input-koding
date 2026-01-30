@@ -8,7 +8,7 @@ export function useProducts() {
     queryKey: ['products'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('products')
+        .from('products' as never)
         .select('*')
         .order('name');
       
@@ -24,8 +24,8 @@ export function useAddProduct() {
   return useMutation({
     mutationFn: async ({ name, category }: { name: string; category: ProductCategory }) => {
       const { data, error } = await supabase
-        .from('products')
-        .insert([{ name, category }])
+        .from('products' as never)
+        .insert([{ name, category }] as never)
         .select()
         .single();
       
@@ -48,7 +48,7 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('products')
+        .from('products' as never)
         .delete()
         .eq('id', id);
       

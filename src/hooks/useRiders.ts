@@ -8,7 +8,7 @@ export function useRiders() {
     queryKey: ['riders'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('riders')
+        .from('riders' as never)
         .select('*')
         .order('name');
       
@@ -24,8 +24,8 @@ export function useAddRider() {
   return useMutation({
     mutationFn: async ({ name, phone }: { name: string; phone?: string }) => {
       const { data, error } = await supabase
-        .from('riders')
-        .insert([{ name, phone }])
+        .from('riders' as never)
+        .insert([{ name, phone }] as never)
         .select()
         .single();
       
@@ -48,7 +48,7 @@ export function useDeleteRider() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('riders')
+        .from('riders' as never)
         .delete()
         .eq('id', id);
       
