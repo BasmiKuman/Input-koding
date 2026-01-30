@@ -90,7 +90,9 @@ function DistributionPage() {
       }) || [];
 
       console.log('=== AUTO DISTRIBUTE START ===');
-      console.log('Products to distribute:', productsToDistribute.map(p => ({ name: p.name, cat: p.category })));
+      console.log('All products in database:', allProducts?.map(p => ({ name: p.name, id: p.id, cat: p.category })));
+      console.log('Config names to match:', configNames);
+      console.log('Products to distribute:', productsToDistribute.map(p => ({ name: p.name, id: p.id, cat: p.category })));
       console.log('Available batches:', availableBatches?.map(b => {
         const daysUntil = Math.ceil(
           (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
