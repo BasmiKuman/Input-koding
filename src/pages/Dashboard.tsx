@@ -73,6 +73,7 @@ function Dashboard() {
     <PageLayout 
       title="Dashboard" 
       subtitle={format(new Date(), 'EEEE, dd MMMM yyyy', { locale: localeId })}
+      // Force redeployment
     >
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-3 mb-6">
