@@ -73,20 +73,26 @@ function DistributionPage() {
     
     if (mode === 'default') {
       // Auto-distribute default products
+      const configNames = Object.keys(DEFAULT_DISTRIBUTION_CONFIG).map(k => k.toLowerCase());
+      
       const productsToDistribute = allProducts?.filter(p => {
         const name = p.name.toLowerCase().trim();
-        // Include all add-ons
+        
+        // Include ALL add-ons
         if (p.category === 'addon') return true;
-        // Include default products (exact match or contain key word)
-        const configKeys = Object.keys(DEFAULT_DISTRIBUTION_CONFIG);
-        return configKeys.some(key => 
-          name === key.toLowerCase() || name.includes(key.toLowerCase())
+        
+        // Include products that match config names
+        // Check exact match or partial match
+        return configNames.some(configName => 
+          name === configName || name.includes(configName)
         );
       }) || [];
 
-      console.log('Products to distribute:', productsToDistribute.map(p => p.name));
+      console.log('=== AUTO DISTRIBUTE START ===');
+      console.log('Products to distribute:', productsToDistribute.map(p => ({ name: p.name, cat: p.category })));
       console.log('Available batches:', availableBatches?.map(b => ({ 
-        name: b.product?.name, 
+        name: b.product?.name,
+        productId: b.product_id, 
         qty: b.current_quantity,
         expired: new Date(b.expiry_date).getTime() < new Date().getTime(),
         rejected: b.notes?.includes('REJECTED')
@@ -94,24 +100,31 @@ function DistributionPage() {
 
       let successCount = 0;
       const distributed = new Set<string>();
-      const failedProducts: string[] = [];
+      const failedProducts: Array<{name: string, reason: string}> = [];
       
       for (const product of productsToDistribute) {
         // Prevent duplicate distribution of same product
         if (distributed.has(product.id)) {
-          console.log(`Skipping ${product.name} - already distributed`);
+          console.log(`⏭️ Skipping ${product.name} - already distributed in this cycle`);
           continue;
         }
         distributed.add(product.id);
 
         // Find batch yang belum expired dan belum dimusnahkan
         const batch = availableBatches?.find(b => {
-          if (b.product_id !== product.id) return false;
-          if (b.current_quantity <= 0) return false;
+          if (b.product_id !== product.id) {
+            console.log(`  ❌ Batch product_id ${b.product_id} !== ${product.id}`);
+            return false;
+          }
+          if (b.current_quantity <= 0) {
+            console.log(`  ❌ ${product.name} qty ${b.current_quantity} <= 0`);
+            return false;
+          }
           
           // Jangan ambil batch yang sudah dimusnahkan
           if (b.notes && b.notes.includes('REJECTED')) {
-            console.log(`${product.name} batch rejected`);
+            console.log(`  ❌ ${product.name} batch rejected`);
+            failedProducts.push({name: product.name, reason: 'Batch rejected'});
             return false;
           }
           
@@ -120,15 +133,16 @@ function DistributionPage() {
             (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           );
           if (daysUntil < 0) {
-            console.log(`${product.name} expired (${daysUntil} days)`);
+            console.log(`  ❌ ${product.name} expired (${daysUntil} days)`);
+            failedProducts.push({name: product.name, reason: `Expired ${daysUntil} days ago`});
             return false;
           }
           return true;
         });
         
         if (!batch) {
-          console.log(`No valid batch found for ${product.name}`);
-          failedProducts.push(product.name);
+          console.log(`⚠️ No valid batch for ${product.name} (category: ${product.category})`);
+          failedProducts.push({name: product.name, reason: 'No valid batch found'});
           continue;
         }
 
@@ -136,7 +150,7 @@ function DistributionPage() {
           ? 5 
           : (DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5);
 
-        console.log(`Distributing ${product.name}: ${quantity} from batch ${batch.id}`);
+        console.log(`✅ Distributing ${product.name}: ${quantity} from batch ${batch.id}`);
 
         try {
           await addDistribution.mutateAsync({
@@ -145,17 +159,23 @@ function DistributionPage() {
             quantity: quantity,
           });
           successCount++;
+          console.log(`   → Success!`);
         } catch (error) {
-          console.error('Error distributing', product.name, error);
-          failedProducts.push(product.name);
+          console.error(`   → Error:`, error);
+          failedProducts.push({name: product.name, reason: error instanceof Error ? error.message : 'Unknown error'});
         }
+      }
+
+      console.log(`=== RESULT: ${successCount} success, ${failedProducts.length} failed ===`);
+      if (failedProducts.length > 0) {
+        console.log('Failed products:', failedProducts);
       }
 
       if (successCount === 0) {
         toast.warning('Tidak ada batch yang tersedia untuk didistribusikan (semua expired atau sudah dimusnahkan)');
       } else {
         const msg = failedProducts.length > 0 
-          ? `${successCount} produk berhasil, gagal: ${failedProducts.join(', ')}`
+          ? `${successCount} produk berhasil. Gagal: ${failedProducts.map(f => `${f.name} (${f.reason})`).join(', ')}`
           : `${successCount} produk berhasil didistribusi!`;
         toast.success(msg);
       }
