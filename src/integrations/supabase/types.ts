@@ -14,7 +14,137 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      distributions: {
+        Row: {
+          batch_id: string
+          created_at: string
+          distributed_at: string
+          id: string
+          notes: string | null
+          quantity: number
+          returned_quantity: number
+          rider_id: string
+          sold_quantity: number
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          distributed_at?: string
+          id?: string
+          notes?: string | null
+          quantity?: number
+          returned_quantity?: number
+          rider_id: string
+          sold_quantity?: number
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          distributed_at?: string
+          id?: string
+          notes?: string | null
+          quantity?: number
+          returned_quantity?: number
+          rider_id?: string
+          sold_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distributions_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "riders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_batches: {
+        Row: {
+          created_at: string
+          current_quantity: number
+          expiry_date: string
+          id: string
+          initial_quantity: number
+          product_id: string
+          production_date: string
+        }
+        Insert: {
+          created_at?: string
+          current_quantity?: number
+          expiry_date: string
+          id?: string
+          initial_quantity?: number
+          product_id: string
+          production_date: string
+        }
+        Update: {
+          created_at?: string
+          current_quantity?: number
+          expiry_date?: string
+          id?: string
+          initial_quantity?: number
+          product_id?: string
+          production_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          category: Database["public"]["Enums"]["product_category"]
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          category?: Database["public"]["Enums"]["product_category"]
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["product_category"]
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      riders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +153,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      product_category: "product" | "addon"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +280,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      product_category: ["product", "addon"],
+    },
   },
 } as const

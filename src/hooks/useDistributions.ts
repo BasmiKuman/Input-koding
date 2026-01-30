@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type { Distribution, InventoryBatch } from '@/types/database';
+import type { Distribution } from '@/types/database';
 import { toast } from 'sonner';
 
 export function useDistributions(date?: string) {
@@ -8,7 +8,7 @@ export function useDistributions(date?: string) {
     queryKey: ['distributions', date],
     queryFn: async () => {
       let query = supabase
-        .from('distributions')
+        .from('distributions' as never)
         .select(`
           *,
           rider:riders(*),
@@ -40,7 +40,7 @@ export function useRiderDistributions(riderId: string) {
     queryKey: ['rider-distributions', riderId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('distributions')
+        .from('distributions' as never)
         .select(`
           *,
           batch:inventory_batches(
@@ -73,7 +73,7 @@ export function useAddDistribution() {
     }) => {
       // First get current batch quantity
       const { data: batchData, error: batchError } = await supabase
-        .from('inventory_batches')
+        .from('inventory_batches' as never)
         .select('current_quantity')
         .eq('id', batch_id)
         .single();
@@ -88,15 +88,15 @@ export function useAddDistribution() {
 
       // Update batch quantity
       const { error: updateError } = await supabase
-        .from('inventory_batches')
-        .update({ current_quantity: batch.current_quantity - quantity })
+        .from('inventory_batches' as never)
+        .update({ current_quantity: batch.current_quantity - quantity } as never)
         .eq('id', batch_id);
 
       if (updateError) throw updateError;
 
       // Create distribution record
       const { data, error } = await supabase
-        .from('distributions')
+        .from('distributions' as never)
         .insert([{
           rider_id,
           batch_id,
@@ -104,7 +104,7 @@ export function useAddDistribution() {
           distributed_at: new Date().toISOString(),
           returned_quantity: 0,
           sold_quantity: 0,
-        }])
+        }] as never)
         .select()
         .single();
       
@@ -142,7 +142,7 @@ export function useBulkDistribution() {
       for (const batch_id of batch_ids) {
         // Get current batch quantity
         const { data: batchData, error: batchError } = await supabase
-          .from('inventory_batches')
+          .from('inventory_batches' as never)
           .select('current_quantity')
           .eq('id', batch_id)
           .single();
@@ -157,15 +157,15 @@ export function useBulkDistribution() {
 
         // Update batch quantity
         const { error: updateError } = await supabase
-          .from('inventory_batches')
-          .update({ current_quantity: batch.current_quantity - actualQuantity })
+          .from('inventory_batches' as never)
+          .update({ current_quantity: batch.current_quantity - actualQuantity } as never)
           .eq('id', batch_id);
 
         if (updateError) throw updateError;
 
         // Create distribution record
         const { data, error } = await supabase
-          .from('distributions')
+          .from('distributions' as never)
           .insert([{
             rider_id,
             batch_id,
@@ -173,7 +173,7 @@ export function useBulkDistribution() {
             distributed_at: new Date().toISOString(),
             returned_quantity: 0,
             sold_quantity: 0,
-          }])
+          }] as never)
           .select()
           .single();
         
@@ -213,7 +213,7 @@ export function useUpdateDistribution() {
     }) => {
       // Get current distribution
       const { data: distData, error: distError } = await supabase
-        .from('distributions')
+        .from('distributions' as never)
         .select('batch_id, quantity, returned_quantity')
         .eq('id', id)
         .single();
@@ -228,7 +228,7 @@ export function useUpdateDistribution() {
         const returnDiff = returned_quantity - (dist.returned_quantity || 0);
         
         const { data: batchData, error: batchError } = await supabase
-          .from('inventory_batches')
+          .from('inventory_batches' as never)
           .select('current_quantity')
           .eq('id', dist.batch_id)
           .single();
@@ -238,15 +238,15 @@ export function useUpdateDistribution() {
         const batch = batchData as { current_quantity: number } | null;
         if (batch) {
           await supabase
-            .from('inventory_batches')
-            .update({ current_quantity: batch.current_quantity + returnDiff })
+            .from('inventory_batches' as never)
+            .update({ current_quantity: batch.current_quantity + returnDiff } as never)
             .eq('id', dist.batch_id);
         }
       }
 
       const { error } = await supabase
-        .from('distributions')
-        .update({ sold_quantity, returned_quantity, notes })
+        .from('distributions' as never)
+        .update({ sold_quantity, returned_quantity, notes } as never)
         .eq('id', id);
       
       if (error) throw error;
