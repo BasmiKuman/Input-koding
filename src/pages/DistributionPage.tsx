@@ -92,7 +92,20 @@ function DistributionPage() {
         if (distributed.has(product.id)) continue;
         distributed.add(product.id);
 
-        const batch = availableBatches?.find(b => b.product_id === product.id && b.current_quantity > 0);
+        // Find batch yang belum expired dan belum dimusnahkan
+        const batch = availableBatches?.find(b => {
+          if (b.product_id !== product.id || b.current_quantity <= 0) return false;
+          
+          // Jangan ambil batch yang sudah dimusnahkan
+          if (b.notes && b.notes.includes('REJECTED')) return false;
+          
+          // Jangan ambil batch yang sudah expired
+          const daysUntil = Math.ceil(
+            (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return daysUntil >= 0;
+        });
+        
         if (!batch) continue;
 
         const quantity = product.category === 'addon' 
@@ -111,7 +124,11 @@ function DistributionPage() {
         }
       }
 
-      toast.success(`${successCount} produk berhasil didistribusi!`);
+      if (successCount === 0) {
+        toast.warning('Tidak ada batch yang tersedia untuk didistribusikan (semua expired atau sudah dimusnahkan)');
+      } else {
+        toast.success(`${successCount} produk berhasil didistribusi!`);
+      }
       setAutoDistributionRiderId(null);
       setAutoDistributionMode(null);
     } else {
