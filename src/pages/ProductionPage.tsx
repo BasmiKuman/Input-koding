@@ -39,24 +39,35 @@ function ProductionPage() {
   const [expiryDate, setExpiryDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
 
-  // Get selected product to determine expiry days
+  // Get selected product
   const selectedProduct = products?.find(p => p.id === productId);
-  const expiryDays = selectedProduct?.category === 'product' ? 7 : 3;
+  
+  // Calculate default suggestion based on product category
+  const getDefaultExpiryDays = () => {
+    return selectedProduct?.category === 'product' ? 7 : 3;
+  };
 
-  // Auto-update expiry when product changes
+  // Auto-update expiry when product changes (only if expiry is still default)
   const handleProductChange = (value: string) => {
     setProductId(value);
     const product = products?.find(p => p.id === value);
-    const days = product?.category === 'product' ? 7 : 3;
-    const newExpiryDate = format(addDays(new Date(productionDate), days), 'yyyy-MM-dd');
-    setExpiryDate(newExpiryDate);
+    if (product) {
+      // Set default expiry based on product category
+      const defaultDays = product?.category === 'product' ? 7 : 3;
+      const newExpiryDate = format(addDays(new Date(productionDate), defaultDays), 'yyyy-MM-dd');
+      setExpiryDate(newExpiryDate);
+    }
   };
 
   // Auto-update expiry when production date changes
   const handleProductionDateChange = (value: string) => {
     setProductionDate(value);
-    const days = selectedProduct?.category === 'product' ? 7 : 3;
-    const newExpiryDate = format(addDays(new Date(value), days), 'yyyy-MM-dd');
+    // Maintain the same shelf life duration
+    const currentShelfLife = Math.ceil(
+      (new Date(expiryDate).getTime() - new Date(productionDate).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const shelfLife = currentShelfLife > 0 ? currentShelfLife : getDefaultExpiryDays();
+    const newExpiryDate = format(addDays(new Date(value), shelfLife), 'yyyy-MM-dd');
     setExpiryDate(newExpiryDate);
   };
 
@@ -64,18 +75,32 @@ function ProductionPage() {
     e.preventDefault();
     if (!productId || !quantity || !productionDate || !expiryDate) return;
 
-    await addBatch.mutateAsync({
-      product_id: productId,
-      initial_quantity: parseInt(quantity),
-      production_date: productionDate,
-      expiry_date: expiryDate,
-    });
+    // Validate expiry date is after or equal to production date
+    const prodDate = new Date(productionDate);
+    const expDate = new Date(expiryDate);
     
-    setProductId('');
-    setQuantity('');
-    setProductionDate(format(new Date(), 'yyyy-MM-dd'));
-    setExpiryDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
-    setIsOpen(false);
+    if (expDate < prodDate) {
+      toast.error('Tanggal expired harus lebih besar atau sama dengan tanggal produksi');
+      return;
+    }
+
+    try {
+      await addBatch.mutateAsync({
+        product_id: productId,
+        initial_quantity: parseInt(quantity),
+        production_date: productionDate,
+        expiry_date: expiryDate,
+      });
+      
+      setProductId('');
+      setQuantity('');
+      setProductionDate(format(new Date(), 'yyyy-MM-dd'));
+      setExpiryDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+      setIsOpen(false);
+    } catch (error) {
+      // Error is already handled by useAddBatch onError
+      console.error('Error adding batch:', error);
+    }
   };
 
   const handleRejectBatch = async (e: React.FormEvent) => {
@@ -168,7 +193,7 @@ function ProductionPage() {
                 </Select>
                 {selectedProduct && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Expired default: {expiryDays} hari dari tanggal produksi
+                    Rekomendasi: {getDefaultExpiryDays()} hari (bisa disesuaikan)
                   </p>
                 )}
               </div>
@@ -203,9 +228,16 @@ function ProductionPage() {
                     min={productionDate}
                   />
                   {selectedProduct && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      ({expiryDays} hari otomatis)
-                    </p>
+                    <>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ({Math.max(0, Math.ceil((new Date(expiryDate).getTime() - new Date(productionDate).getTime()) / (1000 * 60 * 60 * 24)))} hari shelf life)
+                      </p>
+                      {new Date(expiryDate) < new Date() && (
+                        <p className="text-xs text-orange-600 mt-1">
+                          ⚠️ Tanggal expired sudah lewat
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

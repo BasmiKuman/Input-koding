@@ -121,6 +121,22 @@ export function useAddBatch() {
       expiry_date: string;
       initial_quantity: number;
     }) => {
+      // Validate inputs
+      const prodDate = new Date(production_date);
+      const expDate = new Date(expiry_date);
+
+      if (isNaN(prodDate.getTime()) || isNaN(expDate.getTime())) {
+        throw new Error('Format tanggal tidak valid');
+      }
+
+      if (expDate < prodDate) {
+        throw new Error('Tanggal expired harus lebih besar atau sama dengan tanggal produksi');
+      }
+
+      if (initial_quantity <= 0) {
+        throw new Error('Jumlah produksi harus lebih dari 0');
+      }
+
       const { data, error } = await supabase
         .from('inventory_batches' as never)
         .insert([{
@@ -133,7 +149,13 @@ export function useAddBatch() {
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        // Parse Supabase error for better user message
+        if (error.message.includes('foreign key')) {
+          throw new Error('Produk tidak ditemukan. Silakan pilih produk yang valid.');
+        }
+        throw error;
+      }
       return data as InventoryBatch;
     },
     onSuccess: () => {
@@ -143,7 +165,9 @@ export function useAddBatch() {
       toast.success('Batch produksi berhasil ditambahkan');
     },
     onError: (error: Error) => {
-      toast.error('Gagal menambahkan batch: ' + error.message);
+      console.error('Add batch error:', error);
+      const errorMessage = error.message || 'Gagal menambahkan batch';
+      toast.error(errorMessage);
     },
   });
 }
