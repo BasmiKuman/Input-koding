@@ -104,6 +104,7 @@ export function useAddDistribution() {
           distributed_at: new Date().toISOString(),
           returned_quantity: 0,
           sold_quantity: 0,
+          rejected_quantity: 0,
         }] as never)
         .select()
         .single();
@@ -173,6 +174,7 @@ export function useBulkDistribution() {
             distributed_at: new Date().toISOString(),
             returned_quantity: 0,
             sold_quantity: 0,
+            rejected_quantity: 0,
           }] as never)
           .select()
           .single();
@@ -343,14 +345,16 @@ export function useAdjustRiderStock() {
       }
 
       if (action === 'reject') {
-        // For rejects, we remove the items from the rider (and do NOT add them back to inventory)
-        // We'll decrease the distribution.quantity by the rejected amount and append notes.
-        const newQuantity = dist.quantity - amount;
-        const newNotes = `${dist.notes || ''}${dist.notes ? ' | ' : ''}rejected:${amount}`;
+        // For rejects, track in rejected_quantity column
+        // Items are NOT added back to inventory (they're damaged/lost)
+        const newRejected = (dist.rejected_quantity || 0) + amount;
 
         const { error } = await supabase
           .from('distributions')
-          .update({ quantity: newQuantity, notes: newNotes })
+          .update({ 
+            rejected_quantity: newRejected,
+            rejected_at: new Date().toISOString()
+          })
           .eq('id', id);
 
         if (error) throw error;

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
-import { useInventoryBatches, useAddBatch } from '@/hooks/useInventory';
+import { useInventoryBatches, useAddBatch, useRejectBatch } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
-import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -28,7 +28,11 @@ function ProductionPage() {
   const { data: products } = useProducts();
   const { data: batches, isLoading } = useInventoryBatches();
   const addBatch = useAddBatch();
+  const rejectBatch = useRejectBatch();
   const [isOpen, setIsOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [selectedRejectBatch, setSelectedRejectBatch] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [productionDate, setProductionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -72,6 +76,24 @@ function ProductionPage() {
     setProductionDate(format(new Date(), 'yyyy-MM-dd'));
     setExpiryDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
     setIsOpen(false);
+  };
+
+  const handleRejectBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRejectBatch || !rejectReason.trim()) return;
+
+    const batch = batches?.find(b => b.id === selectedRejectBatch);
+    if (!batch) return;
+
+    await rejectBatch.mutateAsync({
+      id: selectedRejectBatch,
+      quantity: batch.initial_quantity,
+      reason: rejectReason.trim(),
+    });
+
+    setRejectDialogOpen(false);
+    setSelectedRejectBatch(null);
+    setRejectReason('');
   };
 
   const getDaysUntilExpiry = (expiryDate: string) => {
@@ -273,22 +295,117 @@ function ProductionPage() {
                         .map((batch) => {
                           const daysUntil = getDaysUntilExpiry(batch.expiry_date);
                           const status = getExpiryStatus(daysUntil);
+                          const isRejected = batch.notes?.includes('REJECTED');
+
                           return (
-                            <div key={batch.id} className="p-3 text-sm">
+                            <div key={batch.id} className={cn(
+                              'p-3 text-sm',
+                              isRejected && 'bg-red-500/5 border-l-4 border-red-500'
+                            )}>
                               <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-muted-foreground">
-                                    Produksi: {format(new Date(batch.production_date), 'dd/MM/yy')}
-                                  </p>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-muted-foreground">
+                                      Produksi: {format(new Date(batch.production_date), 'dd/MM/yy')}
+                                    </p>
+                                    {isRejected && (
+                                      <span className="text-xs bg-red-500/20 text-red-600 px-2 py-0.5 rounded font-medium">
+                                        Ditolak
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className="text-xs text-muted-foreground">
                                     Awal: {batch.initial_quantity} • Sisa: {batch.current_quantity}
                                   </p>
+                                  {isRejected && batch.notes && (
+                                    <p className="text-xs text-red-600 mt-1">
+                                      {batch.notes}
+                                    </p>
+                                  )}
                                 </div>
-                                <div className="text-right">
-                                  <span className={status.class}>{status.label}</span>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {format(new Date(batch.expiry_date), 'dd/MM/yy')}
-                                  </p>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-right">
+                                    <span className={status.class}>{status.label}</span>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {format(new Date(batch.expiry_date), 'dd/MM/yy')}
+                                    </p>
+                                  </div>
+                                  {!isRejected && batch.current_quantity > 0 && (
+                                    <Dialog open={rejectDialogOpen && selectedRejectBatch === batch.id} onOpenChange={(open) => {
+                                      if (open) {
+                                        setRejectDialogOpen(true);
+                                        setSelectedRejectBatch(batch.id);
+                                      } else {
+                                        setRejectDialogOpen(false);
+                                        setSelectedRejectBatch(null);
+                                        setRejectReason('');
+                                      }
+                                    }}>
+                                      <DialogTrigger asChild>
+                                        <button
+                                          className="p-1 text-red-600 hover:bg-red-500/10 rounded transition-colors"
+                                          title="Tandai sebagai reject/rusak"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </DialogTrigger>
+                                      <DialogContent>
+                                        <DialogHeader>
+                                          <DialogTitle className="flex items-center gap-2 text-red-600">
+                                            <AlertTriangle className="w-5 h-5" />
+                                            Tandai Batch Sebagai Reject
+                                          </DialogTitle>
+                                        </DialogHeader>
+                                        <form onSubmit={handleRejectBatch} className="space-y-4 mt-4">
+                                          <div>
+                                            <p className="text-sm font-medium mb-2">Batch Details</p>
+                                            <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                                              <p><span className="font-medium">Produk:</span> {batch.product?.name}</p>
+                                              <p><span className="font-medium">Jumlah:</span> {batch.initial_quantity} unit</p>
+                                              <p><span className="font-medium">Produksi:</span> {format(new Date(batch.production_date), 'dd/MM/yyyy')}</p>
+                                              <p><span className="font-medium">Expired:</span> {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}</p>
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium mb-2">Alasan Reject</label>
+                                            <textarea
+                                              value={rejectReason}
+                                              onChange={(e) => setRejectReason(e.target.value)}
+                                              placeholder="Contoh: Kemasan rusak, warna berubah, dll"
+                                              className="input-field min-h-[80px]"
+                                              required
+                                            />
+                                          </div>
+                                          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                                            <p className="text-xs text-red-600">
+                                              ⚠️ Batch ini akan ditandai sebagai reject dan tidak akan bisa didistribusikan.
+                                            </p>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              type="submit"
+                                              variant="destructive"
+                                              className="flex-1"
+                                              disabled={!rejectReason.trim() || rejectBatch.isPending}
+                                            >
+                                              {rejectBatch.isPending ? 'Menyimpan...' : 'Reject Batch'}
+                                            </Button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setRejectDialogOpen(false);
+                                                setSelectedRejectBatch(null);
+                                                setRejectReason('');
+                                              }}
+                                              className="btn-outline flex-1"
+                                            >
+                                              Batal
+                                            </button>
+                                          </div>
+                                        </form>
+                                      </DialogContent>
+                                    </Dialog>
+                                  )}
                                 </div>
                               </div>
                             </div>

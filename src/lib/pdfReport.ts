@@ -233,11 +233,12 @@ export function generateDailyReport(data: ReportData) {
       d.quantity.toString(),
       (d.sold_quantity || 0).toString(),
       (d.returned_quantity || 0).toString(),
+      (d.rejected_quantity || 0).toString(),
     ]);
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Rider', 'Produk', 'Qty', 'Terjual', 'Retur']],
+      head: [['Rider', 'Produk', 'Qty', 'Terjual', 'Retur', 'Tolak']],
       body: distData,
       theme: 'grid',
       headStyles: { 
@@ -256,6 +257,100 @@ export function generateDailyReport(data: ReportData) {
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // Reject Summary Section
+  const totalRejected = data.distributions.reduce((acc, d) => acc + (d.rejected_quantity || 0), 0);
+  if (totalRejected > 0) {
+    checkAndAddPage(40);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(200, 60, 60); // Red color for reject
+    doc.text('❌ PRODUK DITOLAK/RUSAK (RIDER)', 14, yPos);
+    yPos += 6;
+
+    // Reject by product
+    const rejectByProduct = new Map<string, number>();
+    data.distributions.forEach(d => {
+      if (d.rejected_quantity > 0) {
+        const name = d.batch?.product?.name || 'Unknown';
+        rejectByProduct.set(name, (rejectByProduct.get(name) || 0) + d.rejected_quantity);
+      }
+    });
+
+    const rejectProdData = Array.from(rejectByProduct.entries()).map(([name, qty]) => [
+      name,
+      qty.toString(),
+    ]);
+
+    if (rejectProdData.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Produk', 'Qty Ditolak']],
+        body: rejectProdData,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [200, 60, 60],
+          textColor: [255, 255, 255],
+          fontSize: 9,
+        },
+        bodyStyles: {
+          textColor: [50, 50, 50],
+          fontSize: 8,
+        },
+        alternateRowStyles: {
+          fillColor: [255, 240, 240],
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Reject by rider
+    checkAndAddPage(30);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(200, 60, 60);
+    doc.text('Penolakan Per Rider:', 14, yPos);
+    yPos += 5;
+
+    const rejectByRider = new Map<string, number>();
+    data.distributions.forEach(d => {
+      if (d.rejected_quantity > 0) {
+        const name = d.rider?.name || 'Unknown';
+        rejectByRider.set(name, (rejectByRider.get(name) || 0) + d.rejected_quantity);
+      }
+    });
+
+    const rejectRiderData = Array.from(rejectByRider.entries()).map(([name, qty]) => [
+      name,
+      qty.toString(),
+    ]);
+
+    if (rejectRiderData.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Rider', 'Qty Ditolak']],
+        body: rejectRiderData,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [200, 60, 60],
+          textColor: [255, 255, 255],
+          fontSize: 9,
+        },
+        bodyStyles: {
+          textColor: [50, 50, 50],
+          fontSize: 8,
+        },
+        alternateRowStyles: {
+          fillColor: [255, 240, 240],
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+    }
   }
 
   // PAGE 3: Inventory Details

@@ -36,6 +36,8 @@ export interface Distribution {
   distributed_at: string;
   returned_quantity: number;
   sold_quantity: number;
+  rejected_quantity: number;
+  rejected_at?: string;
   notes?: string;
   rider?: Rider;
   batch?: InventoryBatch;
@@ -50,6 +52,34 @@ export interface InventorySummary {
   total_sold: number;
   total_returned: number;
   batches: InventoryBatch[];
+}
+
+export interface RejectInfo {
+  type: 'production' | 'rider';
+  product_name: string;
+  quantity: number;
+  reason?: string;
+  timestamp: string;
+  rider_name?: string;
+  batch_info?: string;
+}
+
+export interface RejectSummary {
+  total_production_reject: number;
+  total_rider_reject: number;
+  total_reject: number;
+  reject_by_product: Array<{
+    product_name: string;
+    production_reject: number;
+    rider_reject: number;
+    total_reject: number;
+  }>;
+  reject_by_rider: Array<{
+    rider_name: string;
+    rejected_quantity: number;
+    rejected_count: number;
+  }>;
+  reject_details: RejectInfo[];
 }
 
 export interface DailyReport {

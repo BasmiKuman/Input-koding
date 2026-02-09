@@ -835,7 +835,7 @@ function DistributionPage() {
                                   <div className="text-right text-xs">
                                     <p className="font-semibold">{dist.quantity} unit</p>
                                     <p className="text-muted-foreground">
-                                      📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ⭘ {remaining}
+                                      📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ❌ {dist.rejected_quantity || 0} | ⭘ {remaining}
                                     </p>
                                   </div>
                                 </div>

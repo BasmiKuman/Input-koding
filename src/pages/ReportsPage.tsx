@@ -82,6 +82,7 @@ function ReportsPage() {
     let totalDistributed = 0;
     let totalSold = 0;
     let totalReturned = 0;
+    let totalRejected = 0;
 
     batchesData?.forEach(b => {
       totalProduced += b.initial_quantity;
@@ -91,9 +92,10 @@ function ReportsPage() {
       totalDistributed += d.quantity;
       totalSold += d.sold_quantity || 0;
       totalReturned += d.returned_quantity || 0;
+      totalRejected += d.rejected_quantity || 0;
     });
 
-    return { totalProduced, totalDistributed, totalSold, totalReturned };
+    return { totalProduced, totalDistributed, totalSold, totalReturned, totalRejected };
   };
 
   const stats = calculateStats(filteredBatches, filteredDistributions);
@@ -231,7 +233,7 @@ function ReportsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <div className="stat-card bg-primary/5 border-primary/20">
           <div className="flex items-center gap-2 mb-2">
             <Coffee className="w-5 h-5 text-primary" />
@@ -262,6 +264,13 @@ function ReportsPage() {
           <p className="stat-value text-blue-600">{stats.totalSold}</p>
           <p className="text-xs text-muted-foreground">periode ini</p>
         </div>
+        <div className="stat-card bg-red-500/5 border-red-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium">❌ Ditolak</span>
+          </div>
+          <p className="stat-value text-red-600">{stats.totalRejected}</p>
+          <p className="text-xs text-muted-foreground">periode ini</p>
+        </div>
       </div>
 
       {/* Period Summary */}
@@ -282,9 +291,13 @@ function ReportsPage() {
             <span className="text-muted-foreground">Total Terjual</span>
             <span className="font-semibold text-lg text-green-600">{stats.totalSold} unit</span>
           </div>
-          <div className="flex justify-between items-center py-2">
+          <div className="flex justify-between items-center py-2 border-b border-border/50">
             <span className="text-muted-foreground">Total Dikembalikan</span>
             <span className="font-semibold text-lg text-orange-600">{stats.totalReturned} unit</span>
+          </div>
+          <div className="flex justify-between items-center py-2">
+            <span className="text-muted-foreground">Total Ditolak/Rusak (Rider)</span>
+            <span className="font-semibold text-lg text-red-600">{stats.totalRejected} unit</span>
           </div>
         </div>
       </div>
@@ -376,11 +389,79 @@ function ReportsPage() {
                 <div className="text-right">
                   <p className="font-semibold">{dist.quantity} unit</p>
                   <p className="text-xs text-muted-foreground">
-                    Terjual: {dist.sold_quantity || 0} • Retur: {dist.returned_quantity || 0}
+                    Terjual: {dist.sold_quantity || 0} • Retur: {dist.returned_quantity || 0} • Tolak: {dist.rejected_quantity || 0}
                   </p>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Summary by Product */}
+      {filteredDistributions && filteredDistributions.some(d => d.rejected_quantity > 0) && (
+        <div className="table-container mt-6">
+          <div className="p-4 border-b border-border bg-red-500/5">
+            <h3 className="font-semibold">❌ Detail Produk yang Ditolak/Rusak</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {(() => {
+              const rejectMap = new Map<string, { product: string, quantity: number, count: number }>();
+              filteredDistributions.forEach(dist => {
+                if (dist.rejected_quantity > 0) {
+                  const key = dist.batch?.product?.name || 'Unknown';
+                  const existing = rejectMap.get(key) || { product: key, quantity: 0, count: 0 };
+                  existing.quantity += dist.rejected_quantity;
+                  existing.count += 1;
+                  rejectMap.set(key, existing);
+                }
+              });
+              return Array.from(rejectMap.values()).map((item) => (
+                <div key={item.product} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{item.product}</p>
+                    <p className="text-xs text-muted-foreground">{item.count} kalinya ditolak</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-red-600">{item.quantity} unit</p>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Summary by Rider */}
+      {filteredDistributions && filteredDistributions.some(d => d.rejected_quantity > 0) && (
+        <div className="table-container mt-6">
+          <div className="p-4 border-b border-border bg-red-500/5">
+            <h3 className="font-semibold">👤 Penolakan Per Rider</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {(() => {
+              const riderRejectMap = new Map<string, { rider: string, quantity: number, count: number }>();
+              filteredDistributions.forEach(dist => {
+                if (dist.rejected_quantity > 0) {
+                  const rider = dist.rider?.name || 'Unknown';
+                  const existing = riderRejectMap.get(rider) || { rider, quantity: 0, count: 0 };
+                  existing.quantity += dist.rejected_quantity;
+                  existing.count += 1;
+                  riderRejectMap.set(rider, existing);
+                }
+              });
+              return Array.from(riderRejectMap.values()).map((item) => (
+                <div key={item.rider} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{item.rider}</p>
+                    <p className="text-xs text-muted-foreground">{item.count} produk ditolak</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-red-600">{item.quantity} unit</p>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}
