@@ -367,30 +367,26 @@ export function generateDailyReport(data: ReportData) {
     doc.text('❌ PRODUK DITOLAK/RUSAK (RIDER)', 14, yPos);
     yPos += 6;
 
-    // Reject by product
-    const rejectByProduct = new Map<string, number>();
-    data.distributions.forEach(d => {
-      if (d.rejected_quantity > 0) {
-        const name = d.batch?.product?.name || 'Unknown';
-        rejectByProduct.set(name, (rejectByProduct.get(name) || 0) + d.rejected_quantity);
-      }
-    });
+    // Combine reject data: Rider | Produk | Qty Ditolak
+    const rejectDetailData = data.distributions
+      .filter(d => d.rejected_quantity > 0)
+      .map(d => [
+        d.rider?.name || 'Unknown',
+        d.batch?.product?.name || 'Unknown',
+        (d.rejected_quantity || 0).toString(),
+      ]);
 
-    const rejectProdData = Array.from(rejectByProduct.entries()).map(([name, qty]) => [
-      name,
-      qty.toString(),
-    ]);
-
-    if (rejectProdData.length > 0) {
+    if (rejectDetailData.length > 0) {
       autoTable(doc, {
         startY: yPos,
-        head: [['Produk', 'Qty Ditolak']],
-        body: rejectProdData,
+        head: [['Rider', 'Produk', 'Qty Ditolak']],
+        body: rejectDetailData,
         theme: 'grid',
         headStyles: { 
           fillColor: [200, 60, 60],
           textColor: [255, 255, 255],
           fontSize: 9,
+          fontStyle: 'bold',
         },
         bodyStyles: {
           textColor: [50, 50, 50],
@@ -399,50 +395,10 @@ export function generateDailyReport(data: ReportData) {
         alternateRowStyles: {
           fillColor: [255, 240, 240],
         },
-        margin: { left: 14, right: 14 },
-      });
-
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-    }
-
-    // Reject by rider
-    checkAndAddPage(30);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(200, 60, 60);
-    doc.text('Penolakan Per Rider:', 14, yPos);
-    yPos += 5;
-
-    const rejectByRider = new Map<string, number>();
-    data.distributions.forEach(d => {
-      if (d.rejected_quantity > 0) {
-        const name = d.rider?.name || 'Unknown';
-        rejectByRider.set(name, (rejectByRider.get(name) || 0) + d.rejected_quantity);
-      }
-    });
-
-    const rejectRiderData = Array.from(rejectByRider.entries()).map(([name, qty]) => [
-      name,
-      qty.toString(),
-    ]);
-
-    if (rejectRiderData.length > 0) {
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Rider', 'Qty Ditolak']],
-        body: rejectRiderData,
-        theme: 'grid',
-        headStyles: { 
-          fillColor: [200, 60, 60],
-          textColor: [255, 255, 255],
-          fontSize: 9,
-        },
-        bodyStyles: {
-          textColor: [50, 50, 50],
-          fontSize: 8,
-        },
-        alternateRowStyles: {
-          fillColor: [255, 240, 240],
+        columnStyles: {
+          0: { cellWidth: 50 }, // Rider column
+          1: { cellWidth: 80 }, // Produk column
+          2: { halign: 'center', cellWidth: 30 }, // Qty Ditolak column centered
         },
         margin: { left: 14, right: 14 },
       });
