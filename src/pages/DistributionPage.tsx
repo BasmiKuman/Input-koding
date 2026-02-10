@@ -258,56 +258,138 @@ function DistributionPage() {
     
     console.log('🚀 handleAdjustment started');
     console.log('View mode:', isPending ? 'pending' : 'today');
-    console.log('Rider Dists:', riderDists.length);
-    console.log('Adjustment States:', adjustmentStates);
+    console.log('Total distributions for rider:', riderDists.length);
+    console.log('Adjustment states:', adjustmentStates);
+    
+    // Filter to only distributions with input data
+    const distribsToProcess = riderDists.filter(dist => {
+      const state = adjustmentStates[dist.id];
+      const amount = state?.amount ? parseInt(state.amount) : 0;
+      return amount > 0;
+    });
+    
+    if (distribsToProcess.length === 0) {
+      toast.info('Tidak ada perubahan yang diinput');
+      return;
+    }
+    
+    console.log(`Processing ${distribsToProcess.length} distributions with changes`);
     
     let successCount = 0;
     let errorCount = 0;
-    let skippedCount = 0;
+    const errorDetails: Array<{ product: string; amount: number | string; error: string; remaining: number }> = [];
+    const successDetails: Array<{ product: string; amount: number; action: string }> = [];
     
-    for (const dist of riderDists) {
+    // Process each distribution
+    for (const dist of distribsToProcess) {
       const state = adjustmentStates[dist.id];
+      const rawAmount = state?.amount?.trim() || '';
       
-      console.log(`Processing dist ${dist.id} (${dist.batch?.product?.name}):`, state);
+      // Validate input
+      if (!rawAmount) continue;
       
-      // Skip jika tidak ada state atau amount
-      if (!state?.amount || parseInt(state.amount) <= 0) {
-        console.log(`  → Skipped (${dist.batch?.product?.name}) - no amount or 0`);
-        skippedCount++;
+      const amount = parseInt(rawAmount, 10);
+      
+      if (isNaN(amount) || amount <= 0) {
+        console.warn(`Invalid amount for ${dist.batch?.product?.name}: "${state.amount}"`);
         continue;
       }
       
       try {
-        const amount = parseInt(state.amount);
-        console.log(`  → Mutating: action=${state.action}, amount=${amount}`);
+        // Frontend validation before sending to backend
+        const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+        
+        if (amount > remaining) {
+          const msg = `Jumlah ${amount} melebihi stok rider (tersisa: ${remaining})`;
+          throw new Error(msg);
+        }
+        
+        console.log(`✍️  Updating dist ${dist.id}:`, {
+          product: dist.batch?.product?.name,
+          action: state.action,
+          amount: amount,
+          remaining: remaining,
+          current: { sold: dist.sold_quantity, returned: dist.returned_quantity, rejected: dist.rejected_quantity },
+        });
         
         await adjustRiderStock.mutateAsync({
           id: dist.id,
           action: state.action || 'sell',
           amount: amount,
         });
+        
         successCount++;
-        console.log(`  → Success!`);
+        successDetails.push({
+          product: dist.batch?.product?.name || 'Unknown',
+          amount: amount,
+          action: state.action || 'sell',
+        });
+        console.log(`✅ Success: ${dist.batch?.product?.name} - ${amount} unit (${state.action})`);
       } catch (error) {
         errorCount++;
-        console.error('Error adjusting distribution', dist.id, error);
-        toast.error(`Gagal update ${dist.batch?.product?.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+        
+        console.error(`❌ Error updating dist ${dist.id}:`, {
+          product: dist.batch?.product?.name,
+          amount: state.amount,
+          error: errorMsg,
+        });
+        
+        errorDetails.push({
+          product: dist.batch?.product?.name || 'Unknown',
+          amount: state.amount,
+          error: errorMsg,
+          remaining: remaining,
+        });
+        
+        toast.error(`Gagal update ${dist.batch?.product?.name}: ${errorMsg}`);
       }
     }
     
-    console.log(`✅ Done - Success: ${successCount}, Error: ${errorCount}, Skipped: ${skippedCount}`);
-    
-    if (successCount > 0) {
-      toast.success(`${successCount} item berhasil diupdate!`);
-    } else if (errorCount === 0 && riderDists.length > 0) {
-      toast.info('Tidak ada perubahan yang diinput');
+    console.log(`📊 Summary - Success: ${successCount}, Error: ${errorCount}`);
+    if (successDetails.length > 0) {
+      console.log('✅ Success details:', successDetails);
+    }
+    if (errorDetails.length > 0) {
+      console.log('❌ Error details:', errorDetails);
     }
     
-    setAdjustmentRiderId(null);
-    setAdjustmentStates({});
+    // Provide feedback to user
+    if (successCount > 0) {
+      toast.success(`✅ ${successCount} item berhasil diupdate!`);
+      
+      // If all successful, close adjustment panel
+      if (errorCount === 0) {
+        setAdjustmentRiderId(null);
+        setAdjustmentStates({});
+      }
+    }
+    
+    if (errorCount > 0) {
+      const errorMsg = errorDetails
+        .map(e => `${e.product}: ${e.error}`)
+        .join('\n');
+      toast.error(
+        `❌ ${errorCount} item gagal:\n${errorMsg}\n\nSilakan periksa dan coba lagi.`,
+        { duration: 5000 }
+      );
+      // Keep adjustment open so user can fix and retry
+    }
   };
 
   const updateAdjustmentState = (distId: string, field: 'action' | 'amount', value: string) => {
+    // Additional validation for amount field
+    if (field === 'amount') {
+      // Remove leading zeros and ensure valid number
+      const trimmed = value.trim();
+      if (trimmed && !/^\d+$/.test(trimmed)) {
+        // Invalid input - only allow digits
+        console.warn(`Invalid input: "${value}"`);
+        return;
+      }
+    }
+    
     setAdjustmentStates(prev => ({
       ...prev,
       [distId]: {
@@ -923,12 +1005,32 @@ function DistributionPage() {
                                     <input
                                       type="number"
                                       value={state.amount || ''}
-                                      onChange={(e) => updateAdjustmentState(dist.id, 'amount', e.target.value)}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        // HTML number input akan handle validation
+                                        updateAdjustmentState(dist.id, 'amount', val);
+                                      }}
+                                      onBlur={(e) => {
+                                        // Sanitasi value pada blur - remove leading zeros, ensure valid
+                                        const val = e.target.value.trim();
+                                        if (val && /^\d+$/.test(val)) {
+                                          const num = parseInt(val, 10);
+                                          if (num > remaining) {
+                                            console.warn(`Input ${num} exceeds remaining ${remaining}, clamping to max`);
+                                            updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                            toast.info(`Jumlah diatur ke maksimum: ${remaining} unit`);
+                                          }
+                                        }
+                                      }}
                                       placeholder="0"
                                       className="input-field h-8 text-xs"
                                       min="0"
                                       max={remaining}
+                                      step="1"
                                     />
+                                    {state.amount && parseInt(state.amount) > remaining && (
+                                      <p className="text-xs text-red-500 mt-1">Melebihi stok ({remaining} unit)</p>
+                                    )}
                                   </div>
                                   <div className="flex items-end gap-1">
                                     <button

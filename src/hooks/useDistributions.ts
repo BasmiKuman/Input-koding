@@ -306,43 +306,75 @@ export function useAdjustRiderStock() {
       action: 'sell' | 'return' | 'reject';
       amount: number;
     }) => {
-      // Get current distribution
+      console.log(`📝 useAdjustRiderStock.mutationFn called`, { id, action, amount });
+      
+      // Get current distribution with ALL quantity fields
       const { data: distData, error: distError } = await supabase
         .from('distributions')
-        .select('batch_id, quantity, sold_quantity, returned_quantity, notes')
+        .select('batch_id, quantity, sold_quantity, returned_quantity, rejected_quantity, notes, rider_id')
         .eq('id', id)
         .single();
 
-      if (distError) throw distError;
+      if (distError) {
+        console.error('❌ Failed to fetch distribution:', distError);
+        throw distError;
+      }
 
       const dist = distData as {
         batch_id: string;
         quantity: number;
         sold_quantity: number;
         returned_quantity: number;
+        rejected_quantity: number;
         notes?: string;
+        rider_id: string;
       } | null;
 
-      if (!dist) throw new Error('Distribution not found');
+      if (!dist) {
+        console.error('❌ Distribution not found:', id);
+        throw new Error('Distribution not found');
+      }
 
-      if (amount <= 0) throw new Error('Amount harus lebih besar dari 0');
+      console.log(`📦 Current distribution state:`, {
+        total: dist.quantity,
+        sold: dist.sold_quantity || 0,
+        returned: dist.returned_quantity || 0,
+        rejected: dist.rejected_quantity || 0,
+      });
 
-      const remainingWithRider = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
-      if (amount > remainingWithRider) throw new Error('Jumlah melebihi stok rider saat ini');
+      if (amount <= 0) {
+        throw new Error('Amount harus lebih besar dari 0');
+      }
+
+      // Calculate remaining with rider, considering ALL distributions (sold, returned, rejected)
+      const remainingWithRider = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+      
+      console.log(`🔍 Validation:`, { amount, remainingWithRider, isValid: amount <= remainingWithRider });
+      
+      if (amount > remainingWithRider) {
+        throw new Error(`Jumlah melebihi stok rider saat ini. Diminta: ${amount}, Sisa: ${remainingWithRider} unit`);
+      }
 
       if (action === 'sell') {
         const newSold = (dist.sold_quantity || 0) + amount;
+        console.log(`💰 Marking as sold: ${dist.sold_quantity || 0} + ${amount} = ${newSold}`);
+        
         const { error } = await supabase
           .from('distributions')
           .update({ sold_quantity: newSold })
           .eq('id', id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Failed to update sold_quantity:', error);
+          throw error;
+        }
+        console.log(`✅ Updated sold_quantity to ${newSold}`);
         return;
       }
 
       if (action === 'return') {
         const newReturned = (dist.returned_quantity || 0) + amount;
+        console.log(`🔄 Marking as returned: ${dist.returned_quantity || 0} + ${amount} = ${newReturned}`);
 
         // Add returned items back to inventory batch
         const { data: batchData, error: batchError } = await supabase
@@ -351,16 +383,26 @@ export function useAdjustRiderStock() {
           .eq('id', dist.batch_id)
           .single();
 
-        if (batchError) throw batchError;
+        if (batchError) {
+          console.error('❌ Failed to fetch batch:', batchError);
+          throw batchError;
+        }
 
         const batch = batchData as { current_quantity: number } | null;
         if (batch) {
+          const newBatchQty = batch.current_quantity + amount;
+          console.log(`📦 Batch quantity: ${batch.current_quantity} + ${amount} = ${newBatchQty}`);
+          
           const { error: updateBatchError } = await supabase
             .from('inventory_batches')
-            .update({ current_quantity: batch.current_quantity + amount })
+            .update({ current_quantity: newBatchQty })
             .eq('id', dist.batch_id);
 
-          if (updateBatchError) throw updateBatchError;
+          if (updateBatchError) {
+            console.error('❌ Failed to update batch quantity:', updateBatchError);
+            throw updateBatchError;
+          }
+          console.log(`✅ Updated batch quantity to ${newBatchQty}`);
         }
 
         const { error } = await supabase
@@ -368,7 +410,11 @@ export function useAdjustRiderStock() {
           .update({ returned_quantity: newReturned })
           .eq('id', id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Failed to update returned_quantity:', error);
+          throw error;
+        }
+        console.log(`✅ Updated returned_quantity to ${newReturned}`);
         return;
       }
 
@@ -376,6 +422,7 @@ export function useAdjustRiderStock() {
         // For rejects, track in rejected_quantity column
         // Items are NOT added back to inventory (they're damaged/lost)
         const newRejected = (dist.rejected_quantity || 0) + amount;
+        console.log(`❌ Marking as rejected: ${dist.rejected_quantity || 0} + ${amount} = ${newRejected}`);
 
         const { error } = await supabase
           .from('distributions')
@@ -385,18 +432,25 @@ export function useAdjustRiderStock() {
           })
           .eq('id', id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Failed to update rejected_quantity:', error);
+          throw error;
+        }
+        console.log(`✅ Updated rejected_quantity to ${newRejected}`);
         return;
       }
     },
     onSuccess: () => {
+      console.log('🔄 Invalidating queries...');
       queryClient.invalidateQueries({ queryKey: ['distributions'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-distributions'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-batches'] });
       queryClient.invalidateQueries({ queryKey: ['available-batches'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
       toast.success('Stok rider berhasil diperbarui');
     },
     onError: (error: Error) => {
+      console.error('❌ Mutation failed:', error.message);
       toast.error('Gagal memperbarui stok rider: ' + error.message);
     },
   });
