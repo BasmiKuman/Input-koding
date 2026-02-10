@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useInventoryBatches, useInventorySummary } from '@/hooks/useInventory';
 import { useDistributions } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
-import { FileText, Download, Calendar, Coffee, Package } from 'lucide-react';
+import { FileText, Download, Calendar, Coffee, Package, ChevronDown } from 'lucide-react';
 import { format, startOfWeek, startOfMonth, startOfYear, endOfWeek, endOfMonth, endOfYear, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { generateDailyReport } from '@/lib/pdfReport';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
 type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'range';
@@ -19,6 +20,13 @@ function ReportsPage() {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [rangeStart, setRangeStart] = useState(format(addDays(today, -7), 'yyyy-MM-dd'));
   const [rangeEnd, setRangeEnd] = useState(todayStr);
+  const [expandedSections, setExpandedSections] = useState<{
+    periodSummary: boolean;
+    productDetail: boolean;
+  }>({
+    periodSummary: true,
+    productDetail: true,
+  });
   
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
@@ -274,76 +282,108 @@ function ReportsPage() {
       </div>
 
       {/* Period Summary */}
-      <div className="table-container mb-6">
-        <div className="p-4 border-b border-border">
-          <h3 className="font-semibold">📊 Ringkasan Periode</h3>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="flex justify-between items-center py-2 border-b border-border/50">
-            <span className="text-muted-foreground">Total Diproduksi</span>
-            <span className="font-semibold text-lg">{stats.totalProduced} unit</span>
+      <Collapsible
+        open={expandedSections.periodSummary}
+        onOpenChange={(open) =>
+          setExpandedSections({ ...expandedSections, periodSummary: open })
+        }
+        className="table-container mb-6"
+      >
+        <CollapsibleTrigger className="w-full">
+          <div className="p-4 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+            <h3 className="font-semibold">📊 Ringkasan Periode</h3>
+            <ChevronDown
+              className={cn(
+                'w-5 h-5 transition-transform',
+                expandedSections.periodSummary ? 'rotate-180' : ''
+              )}
+            />
           </div>
-          <div className="flex justify-between items-center py-2 border-b border-border/50">
-            <span className="text-muted-foreground">Total Didistribusi</span>
-            <span className="font-semibold text-lg">{stats.totalDistributed} unit</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="p-4 space-y-3">
+            <div className="flex justify-between items-center py-2 border-b border-border/50">
+              <span className="text-muted-foreground">Total Diproduksi</span>
+              <span className="font-semibold text-lg">{stats.totalProduced} unit</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50">
+              <span className="text-muted-foreground">Total Didistribusi</span>
+              <span className="font-semibold text-lg">{stats.totalDistributed} unit</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50">
+              <span className="text-muted-foreground">Total Terjual</span>
+              <span className="font-semibold text-lg text-green-600">{stats.totalSold} unit</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50">
+              <span className="text-muted-foreground">Total Dikembalikan</span>
+              <span className="font-semibold text-lg text-orange-600">{stats.totalReturned} unit</span>
+            </div>
+            <div className="flex justify-between items-center py-2">
+              <span className="text-muted-foreground">Total Ditolak/Rusak (Rider)</span>
+              <span className="font-semibold text-lg text-red-600">{stats.totalRejected} unit</span>
+            </div>
           </div>
-          <div className="flex justify-between items-center py-2 border-b border-border/50">
-            <span className="text-muted-foreground">Total Terjual</span>
-            <span className="font-semibold text-lg text-green-600">{stats.totalSold} unit</span>
-          </div>
-          <div className="flex justify-between items-center py-2 border-b border-border/50">
-            <span className="text-muted-foreground">Total Dikembalikan</span>
-            <span className="font-semibold text-lg text-orange-600">{stats.totalReturned} unit</span>
-          </div>
-          <div className="flex justify-between items-center py-2">
-            <span className="text-muted-foreground">Total Ditolak/Rusak (Rider)</span>
-            <span className="font-semibold text-lg text-red-600">{stats.totalRejected} unit</span>
-          </div>
-        </div>
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Product Summary */}
-      <div className="table-container">
-        <div className="p-4 border-b border-border">
-          <h3 className="font-semibold">Detail per Produk</h3>
-        </div>
-        <div className="divide-y divide-border">
-          {summary?.map((item) => {
-            const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
-            const total = item.total_in_inventory + inRider;
-            
-            return (
-              <div key={item.product_id} className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{item.product_name}</span>
-                    <span className={cn(
-                      'px-2 py-0.5 rounded-full text-xs font-medium',
-                      item.category === 'product' 
-                        ? 'bg-primary/10 text-primary' 
-                        : 'bg-secondary/10 text-secondary'
-                    )}>
-                      {item.category === 'product' ? 'Cup' : 'Add-on'}
-                    </span>
+      <Collapsible
+        open={expandedSections.productDetail}
+        onOpenChange={(open) =>
+          setExpandedSections({ ...expandedSections, productDetail: open })
+        }
+        className="table-container"
+      >
+        <CollapsibleTrigger className="w-full">
+          <div className="p-4 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+            <h3 className="font-semibold">Detail per Produk</h3>
+            <ChevronDown
+              className={cn(
+                'w-5 h-5 transition-transform',
+                expandedSections.productDetail ? 'rotate-180' : ''
+              )}
+            />
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="divide-y divide-border">
+            {summary?.map((item) => {
+              const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
+              const total = item.total_in_inventory + inRider;
+              
+              return (
+                <div key={item.product_id} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className={cn(
+                        'px-2 py-0.5 rounded-full text-xs font-medium',
+                        item.category === 'product' 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-secondary/10 text-secondary'
+                      )}>
+                        {item.category === 'product' ? 'Cup' : 'Add-on'}
+                      </span>
+                    </div>
+                    <span className="font-semibold">{total}</span>
                   </div>
-                  <span className="font-semibold">{total}</span>
+                  <div className="flex gap-4 text-xs text-muted-foreground">
+                    <span>Di Gudang: {item.total_in_inventory}</span>
+                    <span>Di Rider: {inRider}</span>
+                    <span>Terjual: {item.total_sold}</span>
+                  </div>
                 </div>
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span>Di Gudang: {item.total_in_inventory}</span>
-                  <span>Di Rider: {inRider}</span>
-                  <span>Terjual: {item.total_sold}</span>
-                </div>
+              );
+            })}
+            {(!summary || summary.length === 0) && (
+              <div className="p-8 text-center text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Belum ada data untuk laporan</p>
               </div>
-            );
-          })}
-          {(!summary || summary.length === 0) && (
-            <div className="p-8 text-center text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Belum ada data untuk laporan</p>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Production Batches for Selected Date */}
       {filteredBatches.length > 0 && (
