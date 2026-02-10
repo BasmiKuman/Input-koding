@@ -26,8 +26,8 @@ function ReportsPage() {
     productDetail: boolean;
     distributionDetail: boolean;
   }>({
-    periodSummary: true,
-    productDetail: true,
+    periodSummary: false,
+    productDetail: false,
     distributionDetail: false,
   });
   
