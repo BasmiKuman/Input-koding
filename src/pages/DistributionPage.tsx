@@ -243,9 +243,21 @@ function DistributionPage() {
     e.preventDefault();
     if (!adjustmentRiderId) return;
     
-    const riderDists = todayDistributions?.filter(d => d.rider_id === adjustmentRiderId) || [];
+    // Determine if we're in pending view
+    const isPending = adjustmentRiderId.startsWith('pending-');
+    let riderDists: typeof todayDistributions = [];
+    
+    if (isPending) {
+      // Extract riderId from "pending-${riderId}"
+      const riderId = adjustmentRiderId.replace('pending-', '');
+      riderDists = pendingDistributions?.filter(d => d.rider_id === riderId) || [];
+    } else {
+      // Use todayDistributions for today view
+      riderDists = todayDistributions?.filter(d => d.rider_id === adjustmentRiderId) || [];
+    }
     
     console.log('🚀 handleAdjustment started');
+    console.log('View mode:', isPending ? 'pending' : 'today');
     console.log('Rider Dists:', riderDists.length);
     console.log('Adjustment States:', adjustmentStates);
     
@@ -936,6 +948,52 @@ function DistributionPage() {
                             );
                           })}
 
+                          {/* Quick action buttons for bulk fill */}
+                          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 space-y-2">
+                            <p className="text-xs font-medium text-primary/70">💡 Isi Semua Sekaligus:</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  activeDists.forEach(dist => {
+                                    const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                    updateAdjustmentState(dist.id, 'action', 'sell');
+                                    updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                  });
+                                }}
+                                className="btn-secondary text-xs h-8 px-2"
+                              >
+                                ✅ Semua Terjual
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  activeDists.forEach(dist => {
+                                    const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                    updateAdjustmentState(dist.id, 'action', 'return');
+                                    updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                  });
+                                }}
+                                className="btn-secondary text-xs h-8 px-2"
+                              >
+                                🔄 Semua Kembali
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  activeDists.forEach(dist => {
+                                    const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                    updateAdjustmentState(dist.id, 'action', 'reject');
+                                    updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                  });
+                                }}
+                                className="btn-secondary text-xs h-8 px-2"
+                              >
+                                ❌ Semua Tolak
+                              </button>
+                            </div>
+                          </div>
+
                           <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
                             <Button
                               type="submit"
@@ -1099,6 +1157,52 @@ function DistributionPage() {
                                     </div>
                                   );
                                 })}
+
+                                {/* Quick action buttons for bulk fill */}
+                                <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 space-y-2">
+                                  <p className="text-xs font-medium text-orange-700">💡 Isi Semua Sekaligus:</p>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        riderDists.forEach(dist => {
+                                          const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                          updateAdjustmentState(dist.id, 'action', 'sell');
+                                          updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                        });
+                                      }}
+                                      className="btn-secondary text-xs h-8 px-2"
+                                    >
+                                      ✅ Semua Terjual
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        riderDists.forEach(dist => {
+                                          const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                          updateAdjustmentState(dist.id, 'action', 'return');
+                                          updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                        });
+                                      }}
+                                      className="btn-secondary text-xs h-8 px-2"
+                                    >
+                                      🔄 Semua Kembali
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        riderDists.forEach(dist => {
+                                          const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                          updateAdjustmentState(dist.id, 'action', 'reject');
+                                          updateAdjustmentState(dist.id, 'amount', remaining.toString());
+                                        });
+                                      }}
+                                      className="btn-secondary text-xs h-8 px-2"
+                                    >
+                                      ❌ Semua Tolak
+                                    </button>
+                                  </div>
+                                </div>
 
                                 <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
                                   <Button
