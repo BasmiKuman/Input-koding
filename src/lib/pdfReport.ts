@@ -55,9 +55,10 @@ export function generateDailyReport(data: ReportData) {
   let totalAddons = 0;
   let totalSold = 0;
   let totalReturned = 0;
+  let totalRejected = 0;
   
   const summaryData = data.summary.map(item => {
-    const inRider = item.total_distributed - item.total_sold - item.total_returned;
+    const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
     const total = item.total_in_inventory + inRider;
     
     if (item.category === 'product') {
@@ -68,6 +69,7 @@ export function generateDailyReport(data: ReportData) {
     
     totalSold += item.total_sold;
     totalReturned += item.total_returned;
+    totalRejected += item.total_rejected;
     
     return [
       item.product_name,
@@ -123,56 +125,99 @@ export function generateDailyReport(data: ReportData) {
   doc.text('Total Terjual: ' + totalSold + ' unit', 14, yPos);
   yPos += 5;
   doc.text('Total Dikembalikan: ' + totalReturned + ' unit', 14, yPos);
+  yPos += 5;
+  doc.text('Total Ditolak/Rusak: ' + totalRejected + ' unit', 14, yPos);
   yPos += 10;
 
-  // Rider Sales
+  // Rider Sales Summary - untuk perhitungan fee
   checkAndAddPage(50);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(42, 157, 143);
-  doc.text('PENJUALAN PER RIDER', 14, yPos);
+  doc.text('REKAPITULASI PENJUALAN PER RIDER (untuk perhitungan fee)', 14, yPos);
   yPos += 6;
 
-  const riderStats = new Map<string, { sold: number; returned: number }>();
+  const riderStats = new Map<string, { 
+    name: string; 
+    totalQty: number;
+    sold: number;
+    nominal: number;
+    returned: number;
+    rejected: number;
+  }>();
+  
   data.distributions.forEach(dist => {
     const name = dist.rider?.name || 'Unknown';
     if (!riderStats.has(name)) {
-      riderStats.set(name, { sold: 0, returned: 0 });
+      riderStats.set(name, { name, totalQty: 0, sold: 0, nominal: 0, returned: 0, rejected: 0 });
     }
     const s = riderStats.get(name)!;
-    s.sold += dist.sold_quantity || 0;
+    const soldQty = dist.sold_quantity || 0;
+    const price = dist.batch?.product?.price || 0;
+    
+    s.totalQty += dist.quantity;
+    s.sold += soldQty;
+    s.nominal += soldQty * price;
     s.returned += dist.returned_quantity || 0;
+    s.rejected += dist.rejected_quantity || 0;
   });
 
   if (riderStats.size > 0) {
-    const riderData = Array.from(riderStats.entries()).map(([name, stats]) => [
-      name,
-      stats.sold.toString(),
-      stats.returned.toString(),
-      (stats.sold + stats.returned).toString(),
-    ]);
+    // Sort by nominal descending (highest revenue first)
+    const riderData = Array.from(riderStats.values())
+      .sort((a, b) => b.nominal - a.nominal)
+      .map(stats => {
+        const remaining = stats.totalQty - stats.sold - stats.returned - stats.rejected;
+        const nominalFormatted = stats.nominal > 0 ? `Rp ${(stats.nominal / 1000).toFixed(0)}rb` : '-';
+        return [
+          stats.name,
+          stats.totalQty.toString(),
+          stats.sold.toString(),
+          nominalFormatted,
+          stats.returned.toString(),
+          stats.rejected.toString(),
+          remaining.toString(),
+        ];
+      });
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Rider', 'Terjual', 'Retur', 'Total']],
+      head: [['Rider', 'Qty Dikirim', 'Terjual', 'Nominal', 'Kembali', 'Ditolak', 'Sisa/Hilang']],
       body: riderData,
       theme: 'grid',
       headStyles: { 
         fillColor: [42, 157, 143],
         textColor: [255, 255, 255],
-        fontSize: 9,
+        fontSize: 8,
+        fontStyle: 'bold',
       },
       bodyStyles: {
         textColor: [50, 50, 50],
-        fontSize: 8,
+        fontSize: 7,
       },
       alternateRowStyles: {
         fillColor: [240, 248, 248],
       },
       margin: { left: 14, right: 14 },
+      columnStyles: {
+        0: { halign: 'left' },
+        1: { halign: 'center' },
+        2: { halign: 'center', textColor: [34, 139, 34] }, // green for sold
+        3: { halign: 'center', textColor: [0, 102, 204] }, // blue for nominal
+        4: { halign: 'center', textColor: [184, 134, 11] }, // orange for returned
+        5: { halign: 'center', textColor: [178, 34, 34] }, // red for rejected
+        6: { halign: 'center' },
+      },
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 10;
+    
+    // Add fee calculation note
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Catatan: Gunakan kolom "Nominal" untuk menghitung komisi langsung dari revenue (nominal × fee%)', 14, yPos);
+    yPos += 3;
+    doc.text('Atau gunakan kolom "Terjual" untuk komisi per unit (qty × harga unit × fee%)', 14, yPos);
   }
 
   // PAGE 2: Production & Distribution
@@ -260,8 +305,8 @@ export function generateDailyReport(data: ReportData) {
   }
 
   // Reject Summary Section
-  const totalRejected = data.distributions.reduce((acc, d) => acc + (d.rejected_quantity || 0), 0);
-  if (totalRejected > 0) {
+  const riderRejected = data.distributions.reduce((acc, d) => acc + (d.rejected_quantity || 0), 0);
+  if (riderRejected > 0) {
     checkAndAddPage(40);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');

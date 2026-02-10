@@ -23,26 +23,36 @@ function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('product');
+  const [price, setPrice] = useState('');
+  const [priceEditId, setPriceEditId] = useState<string | null>(null);
+  const [priceEditValue, setPriceEditValue] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     if (editingId) {
-      await updateProduct.mutateAsync({ id: editingId, name: name.trim(), category });
+      await updateProduct.mutateAsync({ 
+        id: editingId, 
+        name: name.trim(), 
+        category,
+        price: price ? parseInt(price) : 0
+      });
       setEditingId(null);
     } else {
       await addProduct.mutateAsync({ name: name.trim(), category });
     }
     setName('');
+    setPrice('');
     setCategory('product');
     setIsOpen(false);
   };
 
-  const handleEdit = (id: string, currentName: string, currentCategory: ProductCategory) => {
+  const handleEdit = (id: string, currentName: string, currentCategory: ProductCategory, currentPrice?: number) => {
     setEditingId(id);
     setName(currentName);
     setCategory(currentCategory);
+    setPrice(currentPrice?.toString() || '');
     setIsOpen(true);
   };
 
@@ -50,7 +60,22 @@ function ProductsPage() {
     setIsOpen(false);
     setEditingId(null);
     setName('');
+    setPrice('');
     setCategory('product');
+  };
+
+  const handlePriceEdit = async (id: string, newPrice: string) => {
+    if (!newPrice || parseInt(newPrice) < 0) return;
+    
+    await updateProduct.mutateAsync({
+      id,
+      name: products?.find(p => p.id === id)?.name || '',
+      category: products?.find(p => p.id === id)?.category || 'product',
+      price: parseInt(newPrice)
+    });
+    
+    setPriceEditId(null);
+    setPriceEditValue('');
   };
 
   const handleDelete = async (id: string) => {
@@ -129,6 +154,18 @@ function ProductsPage() {
                   </button>
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Harga (Rp)</label>
+                <input
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Contoh: 50000"
+                  className="input-field"
+                  min="0"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Gunakan untuk perhitungan laporan penjualan</p>
+              </div>
               <div className="flex gap-2">
                 <Button 
                   type="submit" 
@@ -170,18 +207,64 @@ function ProductsPage() {
                 transition={{ delay: index * 0.05 }}
                 className="flex items-center justify-between p-4 border-b border-border last:border-0"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                     <Coffee className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium">{product.name}</p>
                     <span className="badge-success">Cup</span>
                   </div>
                 </div>
+                <div className="text-right mr-4">
+                  {priceEditId === product.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Rp</span>
+                      <input
+                        type="number"
+                        value={priceEditValue}
+                        onChange={(e) => setPriceEditValue(e.target.value)}
+                        className="input-field h-8 w-32 text-sm"
+                        placeholder="0"
+                        min="0"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handlePriceEdit(product.id, priceEditValue)}
+                        className="btn-primary text-xs px-2 h-8"
+                      >
+                        Simpan
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPriceEditId(null);
+                          setPriceEditValue('');
+                        }}
+                        className="btn-outline text-xs px-2 h-8"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-semibold text-lg">
+                        {product.price ? `Rp ${product.price.toLocaleString('id-ID')}` : 'Belum ada harga'}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setPriceEditId(product.id);
+                          setPriceEditValue(product.price?.toString() || '');
+                        }}
+                        className="text-xs text-primary hover:underline mt-1"
+                      >
+                        Edit harga
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleEdit(product.id, product.name, product.category)}
+                    onClick={() => handleEdit(product.id, product.name, product.category, product.price)}
                     className="p-2 text-muted-foreground hover:text-primary transition-colors"
                   >
                     <Edit2 className="w-5 h-5" />
@@ -222,18 +305,64 @@ function ProductsPage() {
                 transition={{ delay: index * 0.05 }}
                 className="flex items-center justify-between p-4 border-b border-border last:border-0"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="w-10 h-10 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center">
                     <Cookie className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium">{product.name}</p>
                     <span className="bg-secondary/10 text-secondary px-2 py-0.5 rounded-full text-xs font-medium">Add-on</span>
                   </div>
                 </div>
+                <div className="text-right mr-4">
+                  {priceEditId === product.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Rp</span>
+                      <input
+                        type="number"
+                        value={priceEditValue}
+                        onChange={(e) => setPriceEditValue(e.target.value)}
+                        className="input-field h-8 w-32 text-sm"
+                        placeholder="0"
+                        min="0"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handlePriceEdit(product.id, priceEditValue)}
+                        className="btn-primary text-xs px-2 h-8"
+                      >
+                        Simpan
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPriceEditId(null);
+                          setPriceEditValue('');
+                        }}
+                        className="btn-outline text-xs px-2 h-8"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-semibold text-lg">
+                        {product.price ? `Rp ${product.price.toLocaleString('id-ID')}` : 'Belum ada harga'}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setPriceEditId(product.id);
+                          setPriceEditValue(product.price?.toString() || '');
+                        }}
+                        className="text-xs text-secondary hover:underline mt-1"
+                      >
+                        Edit harga
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleEdit(product.id, product.name, product.category)}
+                    onClick={() => handleEdit(product.id, product.name, product.category, product.price)}
                     className="p-2 text-muted-foreground hover:text-secondary transition-colors"
                   >
                     <Edit2 className="w-5 h-5" />

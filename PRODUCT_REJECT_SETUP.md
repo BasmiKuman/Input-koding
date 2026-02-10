@@ -66,16 +66,34 @@ ON public.distributions(rejected_quantity) WHERE rejected_quantity > 0;
 
 1. Buka halaman **Distribusi**
 2. Expand rider yang menerima reject
-3. Di setiap produk, ada 3 input:
-   - **Aksi**: Pilih "Ditolak"
-   - **Jumlah**: Berapa unit yang ditolak
-   - **Tombol Semua**: Untuk mengisi maksimal jumlah yang tersisa
-4. Klik **Simpan Semua Perubahan**
+3. Di setiap produk, ada form adjustment dengan 3 opsi aksi:
+   - **Terjual** - Produk berhasil terjual
+   - **Dikembalikan** - Produk tidak terjual, kembalikan ke gudang (lihat [PRODUCT_RETURN_GUIDE.md](PRODUCT_RETURN_GUIDE.md))
+   - **Ditolak** - Produk rusak/tidak layak jual
+4. Untuk produk yang di-reject:
+   - Pilih aksi: **"Ditolak"**
+   - Input jumlah yang ditolak
+   - Klik tombol **"Semua"** jika ingin reject seluruh stok yang tersisa
+5. Klik **Simpan Semua Perubahan**
 
 **Hasil:**
 - ✅ Reject quantity tercatat per rider & produk
-- ✅ Produk yang ditolak tidak dikembalikan ke inventory (hilang)
+- ✅ Produk yang ditolak tidak dikembalikan ke inventory (hilang/loss)
 - ✅ Timestamp otomatis disimpan
+
+---
+
+## 🔄 Return Produk Tidak Terjual
+
+**Skenario:** Produk tidak terjual tapi masih dalam kondisi baik, ingin kembalikan ke gudang
+
+👉 **Lihat panduan lengkap di [PRODUCT_RETURN_GUIDE.md](PRODUCT_RETURN_GUIDE.md)**
+
+Ringkas:
+1. Pilih aksi: **"Dikembalikan"** 
+2. Input jumlah yang dikembalikan
+3. Klik **Simpan Semua Perubahan**
+4. Produk masuk kembali ke stok gudang dan bisa didistribusikan ulang
 
 ---
 

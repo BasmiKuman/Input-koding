@@ -79,6 +79,7 @@ export function useInventorySummary() {
             total_distributed: 0,
             total_sold: 0,
             total_returned: 0,
+            total_rejected: 0,
             batches: [],
           });
         }
@@ -97,6 +98,7 @@ export function useInventorySummary() {
             summary.total_distributed += dist.quantity;
             summary.total_sold += dist.sold_quantity || 0;
             summary.total_returned += dist.returned_quantity || 0;
+            summary.total_rejected += dist.rejected_quantity || 0;
           }
         }
       }

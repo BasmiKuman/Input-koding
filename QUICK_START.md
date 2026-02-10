@@ -34,12 +34,21 @@
   - Klik "Simpan"
   - Verifikasi rejected_quantity update
 
+- [ ] **Test Return Produk:**
+  - Distribusi produk ke rider
+  - Buka adjustment untuk rider tersebut
+  - Pilih aksi "Dikembalikan"
+  - Input jumlah yang dikembalikan
+  - Klik "Simpan"
+  - Verifikasi produk masuk kembali ke stok (lihat di inventory summary)
+
 - [ ] **Test Reports:**
   - Buka halaman Laporan
   - Filter period tertentu
   - Lihat stat card "❌ Ditolak" 
   - Lihat tabel reject by product
   - Lihat tabel reject by rider
+  - Lihat kolom "🔄 Dikembalikan" per rider
   - Export PDF
 
 ### Step 4: Production Deployment
@@ -62,13 +71,20 @@ Baca dokumentasi ini untuk memahami fitur:
    - Best practices
    - Troubleshooting
 
-2. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** 
+2. **[PRODUCT_RETURN_GUIDE.md](PRODUCT_RETURN_GUIDE.md)** ⭐ RETURN FEATURE GUIDE
+   - Kapan menggunakan fitur return
+   - Step-by-step pengembalian produk
+   - Contoh skenario
+   - Perbedaan antara Terjual, Dikembalikan, dan Ditolak
+   - Best practices return
+
+3. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** 
    - Status implementasi
    - Files modified
    - Key features
    - Testing checklist
 
-3. **[REJECT_FEATURE.md](REJECT_FEATURE.md)**
+4. **[REJECT_FEATURE.md](REJECT_FEATURE.md)**
    - Dokumentasi teknis
    - Data structure
    - Implementation plan
@@ -83,8 +99,14 @@ Baca dokumentasi ini untuk memahami fitur:
 - Visual indicator (badge "Ditolak")
 - Batch tidak bisa didistribusikan
 
+### ✅ Return Produk (Return to Inventory)
+- Return produk tidak terjual ke gudang
+- Kondisi baik, bisa didistribusikan ulang
+- Tracking per rider & produk
+- Inventory automatically updated
+
 ### ✅ Rider Reject
-- Track produk yang ditolak rider
+- Track produk yang ditolak rider (rusak/tidak layak)
 - Per rider, per produk
 - Timestamp otomatis
 - Item dihitung hilang (tidak kembali ke inventory)
@@ -93,7 +115,8 @@ Baca dokumentasi ini untuk memahami fitur:
 - Summary stat card untuk total reject
 - Breakdown by product
 - Breakdown by rider
-- PDF export dengan detail reject
+- Breakdown return per rider
+- PDF export dengan detail reject & return
 
 ---
 

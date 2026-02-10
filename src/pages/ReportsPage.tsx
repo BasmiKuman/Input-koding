@@ -309,7 +309,7 @@ function ReportsPage() {
         </div>
         <div className="divide-y divide-border">
           {summary?.map((item) => {
-            const inRider = item.total_distributed - item.total_sold - item.total_returned;
+            const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
             const total = item.total_in_inventory + inRider;
             
             return (
@@ -370,11 +370,103 @@ function ReportsPage() {
         </div>
       )}
 
-      {/* Distributions for Selected Date */}
+      {/* Rider Sales Summary - untuk perhitungan fee */}
+      {filteredDistributions && filteredDistributions.length > 0 && (
+        <div className="table-container mt-6">
+          <div className="p-4 border-b border-border bg-blue-500/5">
+            <h3 className="font-semibold">💰 Rekapitulasi Penjualan Per Rider</h3>
+            <p className="text-xs text-muted-foreground mt-1">Untuk perhitungan fee/komisi rider</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Rider</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold">Qty Dikirim</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-green-600">📦 Terjual</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-blue-600">💰 Nominal</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-orange-600">🔄 Kembali</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-red-600">❌ Ditolak</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold">Sisa/Hilang</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const riderSummary = new Map<string, {
+                    rider: string;
+                    totalQty: number;
+                    totalSold: number;
+                    totalNominal: number;
+                    totalReturned: number;
+                    totalRejected: number;
+                  }>();
+
+                  filteredDistributions.forEach(dist => {
+                    const rider = dist.rider?.name || 'Unknown';
+                    if (!riderSummary.has(rider)) {
+                      riderSummary.set(rider, {
+                        rider,
+                        totalQty: 0,
+                        totalSold: 0,
+                        totalNominal: 0,
+                        totalReturned: 0,
+                        totalRejected: 0,
+                      });
+                    }
+                    const summary = riderSummary.get(rider)!;
+                    const soldQty = dist.sold_quantity || 0;
+                    const price = dist.batch?.product?.price || 0;
+                    
+                    summary.totalQty += dist.quantity;
+                    summary.totalSold += soldQty;
+                    summary.totalNominal += soldQty * price;
+                    summary.totalReturned += dist.returned_quantity || 0;
+                    summary.totalRejected += dist.rejected_quantity || 0;
+                  });
+
+                  // Sort by totalNominal descending (highest revenue first)
+                  const sortedRiders = Array.from(riderSummary.values())
+                    .sort((a, b) => b.totalNominal - a.totalNominal);
+
+                  return sortedRiders.map((item, idx) => {
+                    const remaining = item.totalQty - item.totalSold - item.totalReturned - item.totalRejected;
+                    return (
+                      <tr key={item.rider} className={cn(
+                        'border-b border-border',
+                        idx % 2 === 0 ? 'bg-white' : 'bg-muted/20'
+                      )}>
+                        <td className="px-4 py-3 font-medium">{item.rider}</td>
+                        <td className="px-4 py-3 text-center text-sm">{item.totalQty}</td>
+                        <td className="px-4 py-3 text-center text-sm font-semibold text-green-600">{item.totalSold}</td>
+                        <td className="px-4 py-3 text-center text-sm font-semibold text-blue-600">
+                          Rp {item.totalNominal.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm font-semibold text-orange-600">{item.totalReturned}</td>
+                        <td className="px-4 py-3 text-center text-sm font-semibold text-red-600">{item.totalRejected}</td>
+                        <td className="px-4 py-3 text-center text-sm font-medium">{remaining}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-4 border-t border-border bg-muted/30 text-xs text-muted-foreground">
+            <p><strong>💡 Tips Perhitungan Fee:</strong></p>
+            <ul className="list-disc list-inside space-y-1 mt-1 ml-2">
+              <li>Gunakan kolom <strong>Nominal</strong> untuk menghitung komisi langsung dari revenue</li>
+              <li>Contoh: Jika fee 10%, maka Rider A = Rp 1.000.000 × 10% = Rp 100.000</li>
+              <li>Atau gunakan kolom "Terjual" untuk komisi per unit</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Distributions for Selected Date - Detail */}
       {filteredDistributions && filteredDistributions.length > 0 && (
         <div className="table-container mt-6">
           <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">🚚 Distribusi Periode Ini</h3>
+            <h3 className="font-semibold">🚚 Detail Distribusi Periode Ini</h3>
           </div>
           <div className="divide-y divide-border">
             {filteredDistributions.map((dist) => (

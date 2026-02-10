@@ -58,6 +58,34 @@ export function useRiderDistributions(riderId: string) {
   });
 }
 
+export function usePendingDistributions() {
+  return useQuery({
+    queryKey: ['pending-distributions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('distributions' as never)
+        .select(`
+          *,
+          rider:riders(*),
+          batch:inventory_batches(
+            *,
+            product:products(*)
+          )
+        `)
+        .order('distributed_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Filter distribusi yang masih punya stok sisa (remaining > 0)
+      const typed = data as Distribution[];
+      return typed.filter(dist => {
+        const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+        return remaining > 0;
+      });
+    },
+  });
+}
+
 export function useAddDistribution() {
   const queryClient = useQueryClient();
 

@@ -184,7 +184,7 @@ function Dashboard() {
         </div>
         <div className="divide-y divide-border">
           {summary?.map((item) => {
-            const inRider = item.total_distributed - item.total_sold - item.total_returned;
+            const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
             return (
               <button
                 key={item.product_id}

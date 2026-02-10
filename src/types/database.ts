@@ -4,6 +4,8 @@ export interface Product {
   id: string;
   name: string;
   category: ProductCategory;
+  price: number; // dalam Rupiah
+  description?: string;
   created_at: string;
 }
 
@@ -51,6 +53,7 @@ export interface InventorySummary {
   total_distributed: number;
   total_sold: number;
   total_returned: number;
+  total_rejected: number;
   batches: InventoryBatch[];
 }
 

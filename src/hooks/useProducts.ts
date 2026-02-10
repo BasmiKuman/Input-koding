@@ -46,10 +46,14 @@ export function useUpdateProduct() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, name, category }: { id: string; name: string; category: ProductCategory }) => {
+    mutationFn: async ({ id, name, category, price, description }: { id: string; name: string; category: ProductCategory; price?: number; description?: string }) => {
+      const updateData: any = { name, category };
+      if (price !== undefined) updateData.price = price;
+      if (description !== undefined) updateData.description = description;
+
       const { data, error } = await supabase
         .from('products')
-        .update({ name, category })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -63,6 +67,33 @@ export function useUpdateProduct() {
     },
     onError: (error: Error) => {
       toast.error('Gagal memperbarui produk: ' + error.message);
+    },
+  });
+}
+
+export function useUpdateProductPrice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, price }: { id: string; price: number }) => {
+      if (price < 0) throw new Error('Harga tidak boleh negatif');
+
+      const { data, error } = await supabase
+        .from('products')
+        .update({ price })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as Product;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Harga produk berhasil diperbarui');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal memperbarui harga: ' + error.message);
     },
   });
 }

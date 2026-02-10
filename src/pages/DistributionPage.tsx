@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useRiders, useAddRider } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
-import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock } from '@/hooks/useDistributions';
+import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock, usePendingDistributions } from '@/hooks/useDistributions';
 import { useProducts } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
 import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle } from 'lucide-react';
@@ -33,6 +33,7 @@ function DistributionPage() {
   const { data: allProducts } = useProducts();
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayDistributions } = useDistributions(today);
+  const { data: pendingDistributions } = usePendingDistributions();
   const addRider = useAddRider();
   const addDistribution = useAddDistribution();
   const bulkDistribution = useBulkDistribution();
@@ -41,6 +42,7 @@ function DistributionPage() {
   const [isRiderOpen, setIsRiderOpen] = useState(false);
   const [isDistOpen, setIsDistOpen] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'today' | 'pending'>('today');
   const [adjustmentRiderId, setAdjustmentRiderId] = useState<string | null>(null);
   const [adjustmentStates, setAdjustmentStates] = useState<Record<string, { action: 'sell' | 'return' | 'reject'; amount: string }>>({});
   const [autoDistributionRiderId, setAutoDistributionRiderId] = useState<string | null>(null);
@@ -752,62 +754,99 @@ function DistributionPage() {
 
       {/* Today's Distributions */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Truck className="w-5 h-5 text-success" />
-          <h2 className="font-semibold">Distribusi Hari Ini</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Truck className="w-5 h-5 text-success" />
+            <h2 className="font-semibold">
+              {viewMode === 'today' ? 'Distribusi Hari Ini' : 'Distribusi Pending (Stok Sisa)'}
+            </h2>
+          </div>
+          <div className="flex gap-2 bg-muted p-1 rounded-lg">
+            <button
+              onClick={() => setViewMode('today')}
+              className={cn(
+                'px-3 py-1.5 rounded text-sm font-medium transition-colors',
+                viewMode === 'today' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Hari Ini
+            </button>
+            <button
+              onClick={() => setViewMode('pending')}
+              className={cn(
+                'px-3 py-1.5 rounded text-sm font-medium transition-colors relative',
+                viewMode === 'pending' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Pending
+              {pendingDistributions && pendingDistributions.length > 0 && (
+                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-orange-600 rounded-full">
+                  {Array.from(new Set(pendingDistributions.map(d => d.rider_id))).length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
-        {(!todayDistributions || todayDistributions.length === 0) ? (
-          <div className="p-8 text-center text-muted-foreground bg-muted/30 rounded-lg">
-            <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>Belum ada distribusi hari ini</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {/* Get unique riders for today */}
-            {Array.from(new Set(todayDistributions.map(d => d.rider_id)))
-              .map((riderId) => {
-                const riderDists = todayDistributions.filter(d => d.rider_id === riderId);
-                
-                // Filter produk yang masih punya stok sisa (remaining > 0)
-                const activeDists = riderDists.filter(dist => {
-                  const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
-                  return remaining > 0;
-                });
-                
-                // Skip rider jika semua produk sudah habis
-                if (activeDists.length === 0) return null;
-                
-                const rider = riderDists[0]?.rider;
-                const isOpen = adjustmentRiderId === riderId;
+        {viewMode === 'today' ? (
+          // Today's View
+          <>
+            {(!todayDistributions || todayDistributions.length === 0) ? (
+              <div className="p-8 text-center text-muted-foreground bg-muted/30 rounded-lg">
+                <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Belum ada distribusi hari ini</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Get unique riders for today */}
+                {Array.from(new Set(todayDistributions.map(d => d.rider_id)))
+                  .map((riderId) => {
+                    const riderDists = todayDistributions.filter(d => d.rider_id === riderId);
+                    
+                    // Filter produk yang masih punya stok sisa (remaining > 0)
+                    const activeDists = riderDists.filter(dist => {
+                      const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                      return remaining > 0;
+                    });
+                    
+                    // Skip rider jika semua produk sudah habis
+                    if (activeDists.length === 0) return null;
+                    
+                    const rider = riderDists[0]?.rider;
+                    const isOpen = adjustmentRiderId === riderId;
 
-                return (
-                  <div key={riderId} className="border border-border rounded-lg overflow-hidden">
-                    <div 
-                      className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
-                      onClick={() => setAdjustmentRiderId(isOpen ? null : riderId)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
-                            <User className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="font-semibold">{rider?.name}</p>
-                            <p className="text-sm text-muted-foreground">{activeDists.length} produk</p>
+                    return (
+                      <div key={riderId} className="border border-border rounded-lg overflow-hidden">
+                        <div 
+                          className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
+                          onClick={() => setAdjustmentRiderId(isOpen ? null : riderId)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                                <User className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <p className="font-semibold">{rider?.name}</p>
+                                <p className="text-sm text-muted-foreground">{activeDists.length} produk</p>
+                                <p className="text-xs text-success">Distribusi hari ini</p>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs">
+                              <p className="text-sm font-medium">{activeDists.reduce((acc, d) => acc + (d.quantity - (d.sold_quantity || 0) - (d.returned_quantity || 0) - (d.rejected_quantity || 0)), 0)} unit</p>
+                              <p className="text-muted-foreground">
+                                📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                              </p>
+                              <p className="text-muted-foreground">
+                                🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right text-xs">
-                          <p className="text-sm font-medium">{activeDists.reduce((acc, d) => acc + (d.quantity - (d.sold_quantity || 0) - (d.returned_quantity || 0)), 0)} unit</p>
-                          <p className="text-muted-foreground">
-                            📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
-                          </p>
-                          <p className="text-muted-foreground">
-                            🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
 
                     {/* Expanded content */}
                     {isOpen && (
@@ -819,8 +858,18 @@ function DistributionPage() {
                           className="border-t border-border overflow-hidden"
                         >
                           <div className="p-4 space-y-3 bg-muted/20">
+                            {/* Help text untuk penjelasan action */}
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs text-primary/80">
+                              <p className="font-medium mb-1">📝 Panduan Pengisian Status:</p>
+                              <ul className="space-y-1 ml-2">
+                                <li>• <strong className="text-primary">Terjual:</strong> Produk berhasil dijual ke customer</li>
+                                <li>• <strong className="text-warning">Dikembalikan:</strong> Produk tidak terjual - kembalikan ke gudang/stok</li>
+                                <li>• <strong className="text-destructive">Ditolak:</strong> Produk rusak/tidak layak - tidak masuk stok</li>
+                              </ul>
+                            </div>
+
                             {activeDists.map((dist) => {
-                            const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0);
+                            const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                             const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
 
                             return (
@@ -913,7 +962,173 @@ function DistributionPage() {
                 </div>
               );
             }).filter(Boolean)}
-          </div>
+              </div>
+            )}
+          </>
+        ) : (
+          // Pending View - Show distributions with remaining stock from any date
+          <>
+            {(!pendingDistributions || pendingDistributions.length === 0) ? (
+              <div className="p-8 text-center text-muted-foreground bg-muted/30 rounded-lg">
+                <Check className="w-12 h-12 mx-auto mb-3 opacity-50 text-success" />
+                <p>Semua distribusi sudah selesai! ✓</p>
+                <p className="text-sm mt-2">Tidak ada produk yang pending (stok sisa)</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Get unique riders from pending distributions */}
+                {Array.from(new Set(pendingDistributions.map(d => d.rider_id)))
+                  .map((riderId) => {
+                    const riderDists = pendingDistributions.filter(d => d.rider_id === riderId);
+                    const rider = riderDists[0]?.rider;
+                    const isOpen = adjustmentRiderId === `pending-${riderId}`;
+
+                    return (
+                      <div key={`pending-${riderId}`} className="border border-border rounded-lg overflow-hidden">
+                        <div 
+                          className="p-4 bg-card hover:bg-muted/50 transition-colors cursor-pointer border-l-4 border-l-orange-500" 
+                          onClick={() => setAdjustmentRiderId(isOpen ? null : `pending-${riderId}`)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-orange-500/10 text-orange-600 flex items-center justify-center">
+                                <User className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <p className="font-semibold">{rider?.name}</p>
+                                <p className="text-sm text-muted-foreground">{riderDists.length} produk pending</p>
+                                <p className="text-xs text-orange-600">⚠️ Ada stok yang belum di-update</p>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs">
+                              <p className="text-sm font-medium">{riderDists.reduce((acc, d) => acc + (d.quantity - (d.sold_quantity || 0) - (d.returned_quantity || 0) - (d.rejected_quantity || 0)), 0)} unit sisa</p>
+                              <p className="text-muted-foreground">
+                                📦 Terjual: {riderDists.reduce((acc, d) => acc + (d.sold_quantity || 0), 0)}
+                              </p>
+                              <p className="text-muted-foreground">
+                                🔄 Kembali: {riderDists.reduce((acc, d) => acc + (d.returned_quantity || 0), 0)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded content */}
+                        {isOpen && (
+                          <AnimatePresence>
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="border-t border-border overflow-hidden"
+                            >
+                              <div className="p-4 space-y-3 bg-muted/20">
+                              {/* Help text untuk penjelasan action */}
+                                <div className="bg-info/10 border border-info/30 rounded-lg p-3 text-xs text-info/80">
+                                  <p className="font-medium mb-1">📝 Panduan Pengisian Status:</p>
+                                  <ul className="space-y-1 ml-2">
+                                    <li>• <strong className="text-info">Terjual:</strong> Produk berhasil dijual ke customer</li>
+                                    <li>• <strong className="text-warning">Dikembalikan:</strong> Produk tidak terjual - kembalikan ke gudang/stok</li>
+                                    <li>• <strong className="text-destructive">Ditolak:</strong> Produk rusak/tidak layak - tidak masuk stok</li>
+                                  </ul>
+                                </div>
+
+                                {riderDists.map((dist) => {
+                                  const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                                  const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
+
+                                  return (
+                                    <div key={dist.id} className="border border-border rounded-lg p-3 space-y-3 bg-card">
+                                      <div className="flex items-start justify-between">
+                                        <div>
+                                          <p className="font-medium text-sm">{dist.batch?.product?.name}</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Distribusi: {format(new Date(dist.distributed_at), 'dd/MM/yy')} • Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM/yy')}
+                                          </p>
+                                        </div>
+                                        <div className="text-right text-xs">
+                                          <p className="font-semibold">{dist.quantity} unit</p>
+                                          <p className="text-muted-foreground">
+                                            📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ❌ {dist.rejected_quantity || 0} | ⭘ {remaining}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-3 gap-2">
+                                        <div>
+                                          <label className="text-xs font-medium mb-1 block">Aksi</label>
+                                          <Select 
+                                            value={state.action || 'sell'} 
+                                            onValueChange={(val) => updateAdjustmentState(dist.id, 'action', val as 'sell' | 'return' | 'reject')}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="sell">Terjual</SelectItem>
+                                              <SelectItem value="return">Dikembalikan</SelectItem>
+                                              <SelectItem value="reject">Ditolak</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div>
+                                          <label className="text-xs font-medium mb-1 block">Jumlah</label>
+                                          <input
+                                            type="number"
+                                            value={state.amount || ''}
+                                            onChange={(e) => updateAdjustmentState(dist.id, 'amount', e.target.value)}
+                                            placeholder="0"
+                                            className="input-field h-8 text-xs"
+                                            min="0"
+                                            max={remaining}
+                                          />
+                                        </div>
+                                        <div className="flex items-end gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => updateAdjustmentState(dist.id, 'amount', remaining.toString())}
+                                            className="btn-secondary text-xs h-8 px-2 whitespace-nowrap"
+                                            title="Isi dengan jumlah maksimal"
+                                          >
+                                            Semua
+                                          </button>
+                                          <div className="text-xs text-muted-foreground">
+                                            Maks: {remaining}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
+                                  <Button
+                                    type="submit"
+                                    className="flex-1"
+                                    disabled={adjustRiderStock.isPending}
+                                  >
+                                    {adjustRiderStock.isPending ? 'Menyimpan...' : 'Simpan Semua Perubahan'}
+                                  </Button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdjustmentRiderId(null);
+                                      setAdjustmentStates({});
+                                    }}
+                                    className="btn-outline px-4"
+                                  >
+                                    Batal
+                                  </button>
+                                </form>
+                              </div>
+                            </motion.div>
+                          </AnimatePresence>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </PageLayout>
