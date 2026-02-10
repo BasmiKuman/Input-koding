@@ -129,61 +129,95 @@ export function generateDailyReport(data: ReportData) {
   doc.text('Total Ditolak/Rusak: ' + totalRejected + ' unit', 14, yPos);
   yPos += 10;
 
-  // Rider Sales Summary - untuk perhitungan fee
-  checkAndAddPage(50);
+  // Rider Sales Summary - untuk perhitungan fee (DETAILED PER PRODUCT)
+  checkAndAddPage(80);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(42, 157, 143);
   doc.text('REKAPITULASI PENJUALAN PER RIDER (untuk perhitungan fee)', 14, yPos);
   yPos += 6;
 
-  const riderStats = new Map<string, { 
-    name: string; 
-    totalQty: number;
-    sold: number;
-    nominal: number;
-    returned: number;
-    rejected: number;
-  }>();
-  
+  // Group distributions by rider and build detailed table
+  const riderDistributions = new Map<string, (typeof data.distributions)>();
   data.distributions.forEach(dist => {
-    const name = dist.rider?.name || 'Unknown';
-    if (!riderStats.has(name)) {
-      riderStats.set(name, { name, totalQty: 0, sold: 0, nominal: 0, returned: 0, rejected: 0 });
+    const riderId = dist.rider_id;
+    if (!riderDistributions.has(riderId)) {
+      riderDistributions.set(riderId, []);
     }
-    const s = riderStats.get(name)!;
-    const soldQty = dist.sold_quantity || 0;
-    const price = dist.batch?.product?.price || 0;
-    
-    s.totalQty += dist.quantity;
-    s.sold += soldQty;
-    s.nominal += soldQty * price;
-    s.returned += dist.returned_quantity || 0;
-    s.rejected += dist.rejected_quantity || 0;
+    riderDistributions.get(riderId)!.push(dist);
   });
 
-  if (riderStats.size > 0) {
-    // Sort by nominal descending (highest revenue first)
-    const riderData = Array.from(riderStats.values())
-      .sort((a, b) => b.nominal - a.nominal)
-      .map(stats => {
-        const remaining = stats.totalQty - stats.sold - stats.returned - stats.rejected;
-        const nominalFormatted = stats.nominal > 0 ? `Rp ${(stats.nominal / 1000).toFixed(0)}rb` : '-';
-        return [
-          stats.name,
-          stats.totalQty.toString(),
-          stats.sold.toString(),
-          nominalFormatted,
-          stats.returned.toString(),
-          stats.rejected.toString(),
-          remaining.toString(),
-        ];
+  if (riderDistributions.size > 0) {
+    // Build table data with detailed rows per product per rider
+    const detailedData: any[] = [];
+    let totalCupsSold = 0;
+    let totalNominalRevenue = 0;
+
+    // Sort riders by total nominal (highest first)
+    const sortedRiderEntries = Array.from(riderDistributions.entries())
+      .sort((a, b) => {
+        const nominalA = a[1].reduce((sum, d) => sum + ((d.sold_quantity || 0) * (d.batch?.product?.price || 0)), 0);
+        const nominalB = b[1].reduce((sum, d) => sum + ((d.sold_quantity || 0) * (d.batch?.product?.price || 0)), 0);
+        return nominalB - nominalA;
       });
+
+    for (const [riderId, distributions] of sortedRiderEntries) {
+      const rider = distributions[0]?.rider;
+      let riderCupsSold = 0;
+      let riderNominal = 0;
+
+      // Add detail rows for each product
+      for (const dist of distributions) {
+        const productName = dist.batch?.product?.name || '-';
+        const isProduct = dist.batch?.product?.category === 'product';
+        const soldQty = dist.sold_quantity || 0;
+        const returnedQty = dist.returned_quantity || 0;
+        const rejectedQty = dist.rejected_quantity || 0;
+        const price = dist.batch?.product?.price || 0;
+        const nominal = soldQty * price;
+
+        // Track only products (not add-ons) for cup count
+        if (isProduct && soldQty > 0) {
+          riderCupsSold += soldQty;
+          totalCupsSold += soldQty;
+        }
+
+        riderNominal += nominal;
+        totalNominalRevenue += nominal;
+
+        // Format nominal with proper currency formatting
+        const nominalFormatted = nominal > 0 ? `Rp. ${nominal.toLocaleString('id-ID')}` : '-';
+
+        detailedData.push([
+          rider?.name || '-',
+          productName,
+          soldQty.toString(),
+          returnedQty.toString(),
+          rejectedQty.toString(),
+          nominalFormatted,
+          isProduct ? (soldQty > 0 ? soldQty.toString() : '0') : '(addon)',
+        ]);
+      }
+
+      // Add rider summary row (bolder/different styling)
+      if (distributions.length > 1 || distributions.some(d => d.quantity > 0)) {
+        const nominalFormatted = riderNominal > 0 ? `Rp. ${riderNominal.toLocaleString('id-ID')}` : '-';
+        detailedData.push([
+          `↳ SUBTOTAL ${rider?.name}`,
+          '',
+          '',
+          '',
+          '',
+          nominalFormatted,
+          riderCupsSold.toString(),
+        ]);
+      }
+    }
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Rider', 'Qty Dikirim', 'Terjual', 'Nominal', 'Kembali', 'Ditolak', 'Sisa/Hilang']],
-      body: riderData,
+      head: [['Rider', 'Produk', 'Terjual', 'Kembali', 'Reject', 'Nominal', 'Cup Terjual']],
+      body: detailedData,
       theme: 'grid',
       headStyles: { 
         fillColor: [42, 157, 143],
@@ -198,26 +232,45 @@ export function generateDailyReport(data: ReportData) {
       alternateRowStyles: {
         fillColor: [240, 248, 248],
       },
+      didParseCell: (data) => {
+        // Make subtotal rows bold
+        if (data.cell.text?.[0]?.includes('SUBTOTAL')) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [220, 240, 240];
+        }
+      },
       margin: { left: 14, right: 14 },
       columnStyles: {
-        0: { halign: 'left' },
-        1: { halign: 'center' },
+        0: { halign: 'left', cellWidth: 30 },
+        1: { halign: 'left', cellWidth: 35 },
         2: { halign: 'center', textColor: [34, 139, 34] }, // green for sold
-        3: { halign: 'center', textColor: [0, 102, 204] }, // blue for nominal
-        4: { halign: 'center', textColor: [184, 134, 11] }, // orange for returned
-        5: { halign: 'center', textColor: [178, 34, 34] }, // red for rejected
+        3: { halign: 'center', textColor: [184, 134, 11] }, // orange for returned
+        4: { halign: 'center', textColor: [178, 34, 34] }, // red for rejected
+        5: { halign: 'right', textColor: [0, 102, 204] }, // blue for nominal
         6: { halign: 'center' },
       },
     });
 
-    yPos = (doc as any).lastAutoTable.finalY + 10;
+    yPos = (doc as any).lastAutoTable.finalY + 8;
+
+    // Add totals summary at bottom
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(42, 157, 143);
     
+    const totalNominalFormatted = `Rp. ${totalNominalRevenue.toLocaleString('id-ID')}`;
+    doc.text(`TOTAL CUP TERJUAL: ${totalCupsSold} unit`, 14, yPos);
+    yPos += 4;
+    doc.text(`TOTAL NOMINAL: ${totalNominalFormatted}`, 14, yPos);
+    yPos += 6;
+
     // Add fee calculation note
     doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text('Catatan: Gunakan kolom "Nominal" untuk menghitung komisi langsung dari revenue (nominal × fee%)', 14, yPos);
+    doc.text('Catatan: Kolom "Cup Terjual" hanya menghitung produk utama, bukan add-on', 14, yPos);
     yPos += 3;
-    doc.text('Atau gunakan kolom "Terjual" untuk komisi per unit (qty × harga unit × fee%)', 14, yPos);
+    doc.text('Gunakan "Total Nominal" untuk menghitung komisi: Total Nominal × fee%', 14, yPos);
   }
 
   // PAGE 2: Production & Distribution
