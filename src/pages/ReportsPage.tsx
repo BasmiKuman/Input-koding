@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useInventoryBatches, useInventorySummary } from '@/hooks/useInventory';
 import { useDistributions } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
-import { FileText, Download, Calendar, Coffee, Package, ChevronDown } from 'lucide-react';
+import { FileText, Download, Calendar, Coffee, Package, ChevronDown, X, Edit2, Trash2 } from 'lucide-react';
 import { format, startOfWeek, startOfMonth, startOfYear, endOfWeek, endOfMonth, endOfYear, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { generateDailyReport } from '@/lib/pdfReport';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'range';
@@ -23,10 +24,27 @@ function ReportsPage() {
   const [expandedSections, setExpandedSections] = useState<{
     periodSummary: boolean;
     productDetail: boolean;
+    distributionDetail: boolean;
   }>({
     periodSummary: true,
     productDetail: true,
+    distributionDetail: false,
   });
+  
+  // Modal state for rider details
+  const [selectedRiderName, setSelectedRiderName] = useState<string | null>(null);
+  const [isRiderModalOpen, setIsRiderModalOpen] = useState(false);
+  const [riderModalData, setRiderModalData] = useState<Array<{
+    id: string;
+    productName: string;
+    productPrice: number;
+    quantity: number;
+    soldQty: number;
+    returnedQty: number;
+    rejectedQty: number;
+  }>>([]);
+  const [editingDistId, setEditingDistId] = useState<string | null>(null);
+  const [editingValues, setEditingValues] = useState<Record<string, { sold: string; returned: string; rejected: string }>>({});
   
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
@@ -113,6 +131,35 @@ function ReportsPage() {
     .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
   const totalAddons = summary?.filter(s => s.category === 'addon')
     .reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
+
+  // Open rider modal with their details
+  const openRiderModal = (riderName: string) => {
+    const riderDists = filteredDistributions.filter(d => d.rider?.name === riderName);
+    const modalData = riderDists.map(dist => ({
+      id: dist.id,
+      productName: dist.batch?.product?.name || 'Unknown',
+      productPrice: dist.batch?.product?.price || 0,
+      quantity: dist.quantity,
+      soldQty: dist.sold_quantity || 0,
+      returnedQty: dist.returned_quantity || 0,
+      rejectedQty: dist.rejected_quantity || 0,
+    }));
+    
+    setRiderModalData(modalData);
+    setSelectedRiderName(riderName);
+    // Initialize editing values
+    const initialEdits: Record<string, { sold: string; returned: string; rejected: string }> = {};
+    modalData.forEach(item => {
+      initialEdits[item.id] = {
+        sold: item.soldQty.toString(),
+        returned: item.returnedQty.toString(),
+        rejected: item.rejectedQty.toString(),
+      };
+    });
+    setEditingValues(initialEdits);
+    setEditingDistId(null);
+    setIsRiderModalOpen(true);
+  };
 
   const handleGenerateReport = async () => {
     if (!batches || !summary) return;
@@ -475,7 +522,15 @@ function ReportsPage() {
                         'border-b border-border',
                         idx % 2 === 0 ? 'bg-white' : 'bg-muted/20'
                       )}>
-                        <td className="px-4 py-3 font-medium">{item.rider}</td>
+                        <td className="px-4 py-3 font-medium">
+                          <button
+                            onClick={() => openRiderModal(item.rider)}
+                            className="text-primary hover:underline cursor-pointer transition-colors hover:text-primary/80"
+                            title="Klik untuk melihat detail penjualan"
+                          >
+                            {item.rider}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-center text-sm">{item.totalQty}</td>
                         <td className="px-4 py-3 text-center text-sm font-semibold text-green-600">{item.totalSold}</td>
                         <td className="px-4 py-3 text-center text-sm font-semibold text-blue-600">
@@ -504,30 +559,46 @@ function ReportsPage() {
 
       {/* Distributions for Selected Date - Detail */}
       {filteredDistributions && filteredDistributions.length > 0 && (
-        <div className="table-container mt-6">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">🚚 Detail Distribusi Periode Ini</h3>
-          </div>
-          <div className="divide-y divide-border">
-            {filteredDistributions.map((dist) => (
-              <div key={dist.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{dist.rider?.name}</p>
-                  <p className="text-sm text-muted-foreground">{dist.batch?.product?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Batch: {format(new Date(dist.batch?.production_date || ''), 'dd/MM')} - Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM')}
-                  </p>
+        <Collapsible
+          open={expandedSections.distributionDetail}
+          onOpenChange={(open) =>
+            setExpandedSections({ ...expandedSections, distributionDetail: open })
+          }
+          className="table-container mt-6"
+        >
+          <CollapsibleTrigger className="w-full">
+            <div className="p-4 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+              <h3 className="font-semibold">🚚 Detail Distribusi Periode Ini</h3>
+              <ChevronDown
+                className={cn(
+                  'w-5 h-5 transition-transform',
+                  expandedSections.distributionDetail ? 'rotate-180' : ''
+                )}
+              />
+            </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="divide-y divide-border">
+              {filteredDistributions.map((dist) => (
+                <div key={dist.id} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{dist.rider?.name}</p>
+                    <p className="text-sm text-muted-foreground">{dist.batch?.product?.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Batch: {format(new Date(dist.batch?.production_date || ''), 'dd/MM')} - Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">{dist.quantity} unit</p>
+                    <p className="text-xs text-muted-foreground">
+                      Terjual: {dist.sold_quantity || 0} • Retur: {dist.returned_quantity || 0} • Tolak: {dist.rejected_quantity || 0}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold">{dist.quantity} unit</p>
-                  <p className="text-xs text-muted-foreground">
-                    Terjual: {dist.sold_quantity || 0} • Retur: {dist.returned_quantity || 0} • Tolak: {dist.rejected_quantity || 0}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {/* Reject Summary by Product */}
@@ -597,6 +668,218 @@ function ReportsPage() {
           </div>
         </div>
       )}
+
+      {/* Rider Details Modal */}
+      <Dialog open={isRiderModalOpen} onOpenChange={setIsRiderModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>📋 Detail Penjualan - {selectedRiderName}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {riderModalData.map((item) => {
+              const isEditing = editingDistId === item.id;
+              const editVal = editingValues[item.id] || {
+                sold: item.soldQty.toString(),
+                returned: item.returnedQty.toString(),
+                rejected: item.rejectedQty.toString(),
+              };
+              const remaining =
+                item.quantity -
+                parseInt(editVal.sold || '0') -
+                parseInt(editVal.returned || '0') -
+                parseInt(editVal.rejected || '0');
+
+              return (
+                <div
+                  key={item.id}
+                  className="border border-border rounded-lg p-4 space-y-3 bg-muted/20"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-semibold text-sm">{item.productName}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Harga: Rp {item.productPrice.toLocaleString('id-ID')}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Total Dikirim: <span className="font-semibold">{item.quantity} unit</span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setEditingDistId(isEditing ? null : item.id)
+                      }
+                      className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+                      title={isEditing ? 'Batal edit' : 'Edit data'}
+                    >
+                      <Edit2 className="w-4 h-4 text-primary" />
+                    </button>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="bg-card rounded-lg p-3 space-y-3 border border-primary/20">
+                      <p className="text-xs font-medium text-primary">✏️ Edit Status Penjualan</p>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-medium block mb-1">
+                            📦 Terjual
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={editVal.sold || ''}
+                            onChange={(e) =>
+                              setEditingValues((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  ...prev[item.id],
+                                  sold: e.target.value,
+                                },
+                              }))
+                            }
+                            className="input-field text-xs h-8 w-full"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium block mb-1">
+                            🔄 Dikembalikan
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={editVal.returned || ''}
+                            onChange={(e) =>
+                              setEditingValues((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  ...prev[item.id],
+                                  returned: e.target.value,
+                                },
+                              }))
+                            }
+                            className="input-field text-xs h-8 w-full"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium block mb-1">
+                            ❌ Ditolak
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={editVal.rejected || ''}
+                            onChange={(e) =>
+                              setEditingValues((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  ...prev[item.id],
+                                  rejected: e.target.value,
+                                },
+                              }))
+                            }
+                            className="input-field text-xs h-8 w-full"
+                          />
+                        </div>
+                      </div>
+
+                      {remaining < 0 && (
+                        <div className="bg-red-500/10 border border-red-500/30 rounded p-2 text-xs text-red-600">
+                          ⚠️ Total melebihi jumlah yang dikirim! Sisa: {remaining} unit
+                        </div>
+                      )}
+
+                      <div className="bg-muted/50 rounded p-2 text-xs">
+                        <p className="font-medium">
+                          Sisa Stok: <span className="text-primary">{remaining}</span> unit
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => setEditingDistId(null)}
+                          className="btn-primary text-xs h-8 px-3 flex-1"
+                        >
+                          ✓ Selesai Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingValues((prev) => ({
+                              ...prev,
+                              [item.id]: {
+                                sold: item.soldQty.toString(),
+                                returned: item.returnedQty.toString(),
+                                rejected: item.rejectedQty.toString(),
+                              },
+                            }));
+                            setEditingDistId(null);
+                          }}
+                          className="btn-outline text-xs h-8 px-3 flex-1"
+                        >
+                          ✕ Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3 bg-card rounded-lg p-3">
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Terjual</p>
+                        <p className="font-semibold text-sm text-green-600">
+                          {item.soldQty}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Dikembalikan</p>
+                        <p className="font-semibold text-sm text-orange-600">
+                          {item.returnedQty}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Ditolak</p>
+                        <p className="font-semibold text-sm text-red-600">
+                          {item.rejectedQty}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 space-y-2">
+              <p className="text-xs font-medium text-blue-600">💡 Tips Penggunaan:</p>
+              <ul className="text-xs text-blue-600/80 space-y-1 ml-4">
+                <li>• Klik 🖊️ untuk edit status penjualan</li>
+                <li>• Pastikan total tidak melebihi jumlah yang dikirim</li>
+                <li>• Gunakan untuk koreksi jika ada kesalahan input sebelumnya</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => setIsRiderModalOpen(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Tutup
+              </Button>
+              <Button
+                variant="default"
+                className="flex-1"
+                disabled={Object.keys(editingValues).length === 0}
+                title="Fitur simpan akan diimplementasikan di update selanjutnya"
+              >
+                💾 Simpan Perubahan
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
