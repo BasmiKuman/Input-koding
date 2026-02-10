@@ -203,7 +203,7 @@ export function generateDailyReport(data: ReportData) {
       if (distributions.length > 1 || distributions.some(d => d.quantity > 0)) {
         const nominalFormatted = riderNominal > 0 ? `Rp. ${riderNominal.toLocaleString('id-ID')}` : '-';
         detailedData.push([
-          `↳ SUBTOTAL ${rider?.name}`,
+          `SUBTOTAL: ${rider?.name}`,
           '',
           '',
           '',
