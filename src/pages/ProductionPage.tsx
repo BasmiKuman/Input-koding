@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
-import { useInventoryBatches, useAddBatch, useRejectBatch } from '@/hooks/useInventory';
+import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
-import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle } from 'lucide-react';
+import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -29,10 +29,14 @@ function ProductionPage() {
   const { data: batches, isLoading } = useInventoryBatches();
   const addBatch = useAddBatch();
   const rejectBatch = useRejectBatch();
+  const updateBatchQuantity = useUpdateBatchQuantity();
   const [isOpen, setIsOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [selectedRejectBatch, setSelectedRejectBatch] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedEditBatch, setSelectedEditBatch] = useState<any>(null);
+  const [editedQuantity, setEditedQuantity] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [productionDate, setProductionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -119,6 +123,27 @@ function ProductionPage() {
     setRejectDialogOpen(false);
     setSelectedRejectBatch(null);
     setRejectReason('');
+  };
+
+  const handleEditBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEditBatch || !editedQuantity) return;
+
+    const newQuantity = parseInt(editedQuantity);
+    if (newQuantity < 0) {
+      toast.error('Jumlah tidak boleh negatif');
+      return;
+    }
+
+    await updateBatchQuantity.mutateAsync({
+      id: selectedEditBatch.id,
+      quantity: newQuantity,
+    });
+
+    setEditDialogOpen(false);
+    setSelectedEditBatch(null);
+    setEditedQuantity('');
+    toast.success('Batch berhasil diperbarui');
   };
 
   const getDaysUntilExpiry = (expiryDate: string) => {
@@ -363,32 +388,112 @@ function ProductionPage() {
                                     </p>
                                   </div>
                                   {!isRejected && batch.current_quantity > 0 && (
-                                    <Dialog open={rejectDialogOpen && selectedRejectBatch === batch.id} onOpenChange={(open) => {
-                                      if (open) {
-                                        setRejectDialogOpen(true);
-                                        setSelectedRejectBatch(batch.id);
-                                      } else {
-                                        setRejectDialogOpen(false);
-                                        setSelectedRejectBatch(null);
-                                        setRejectReason('');
-                                      }
-                                    }}>
-                                      <DialogTrigger asChild>
-                                        <button
-                                          className="p-1 text-red-600 hover:bg-red-500/10 rounded transition-colors"
-                                          title="Tandai sebagai reject/rusak"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </button>
-                                      </DialogTrigger>
-                                      <DialogContent>
-                                        <DialogHeader>
-                                          <DialogTitle className="flex items-center gap-2 text-red-600">
-                                            <AlertTriangle className="w-5 h-5" />
-                                            Tandai Batch Sebagai Reject
-                                          </DialogTitle>
-                                        </DialogHeader>
-                                        <form onSubmit={handleRejectBatch} className="space-y-4 mt-4">
+                                    <div className="flex items-center gap-1">
+                                      <Dialog open={editDialogOpen && selectedEditBatch?.id === batch.id} onOpenChange={(open) => {
+                                        if (open) {
+                                          setEditDialogOpen(true);
+                                          setSelectedEditBatch(batch);
+                                          setEditedQuantity(batch.current_quantity.toString());
+                                        } else {
+                                          setEditDialogOpen(false);
+                                          setSelectedEditBatch(null);
+                                          setEditedQuantity('');
+                                        }
+                                      }}>
+                                        <DialogTrigger asChild>
+                                          <button
+                                            className="p-1 text-blue-600 hover:bg-blue-500/10 rounded transition-colors"
+                                            title="Edit jumlah stok"
+                                          >
+                                            <Edit2 className="w-4 h-4" />
+                                          </button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                          <DialogHeader>
+                                            <DialogTitle className="flex items-center gap-2">
+                                              <Edit2 className="w-5 h-5" />
+                                              Edit Stok Batch
+                                            </DialogTitle>
+                                          </DialogHeader>
+                                          <form onSubmit={handleEditBatch} className="space-y-4 mt-4">
+                                            <div>
+                                              <p className="text-sm font-medium mb-2">Batch Details</p>
+                                              <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                                                <p><span className="font-medium">Produk:</span> {batch.product?.name}</p>
+                                                <p><span className="font-medium">Produksi:</span> {format(new Date(batch.production_date), 'dd/MM/yyyy')}</p>
+                                                <p><span className="font-medium">Expired:</span> {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}</p>
+                                                <p><span className="font-medium">Awal:</span> {batch.initial_quantity} unit</p>
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <label className="block text-sm font-medium mb-2">Jumlah Stok Saat Ini</label>
+                                              <input
+                                                type="number"
+                                                value={editedQuantity}
+                                                onChange={(e) => setEditedQuantity(e.target.value)}
+                                                placeholder="Jumlah stok"
+                                                className="input-field"
+                                                min="0"
+                                                max={batch.initial_quantity}
+                                              />
+                                              <p className="text-xs text-muted-foreground mt-1">
+                                                Jumlah awal: {batch.initial_quantity} unit
+                                              </p>
+                                            </div>
+                                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                                              <p className="text-xs text-blue-600">
+                                                ℹ️ Update ini berguna untuk balancing stok dengan kondisi riil di gudang.
+                                              </p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                              <Button
+                                                type="submit"
+                                                className="flex-1"
+                                                disabled={!editedQuantity || updateBatchQuantity.isPending}
+                                              >
+                                                {updateBatchQuantity.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+                                              </Button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setEditDialogOpen(false);
+                                                  setSelectedEditBatch(null);
+                                                  setEditedQuantity('');
+                                                }}
+                                                className="btn-outline flex-1"
+                                              >
+                                                Batal
+                                              </button>
+                                            </div>
+                                          </form>
+                                        </DialogContent>
+                                      </Dialog>
+                                      <Dialog open={rejectDialogOpen && selectedRejectBatch === batch.id} onOpenChange={(open) => {
+                                        if (open) {
+                                          setRejectDialogOpen(true);
+                                          setSelectedRejectBatch(batch.id);
+                                        } else {
+                                          setRejectDialogOpen(false);
+                                          setSelectedRejectBatch(null);
+                                          setRejectReason('');
+                                        }
+                                      }}>
+                                        <DialogTrigger asChild>
+                                          <button
+                                            className="p-1 text-red-600 hover:bg-red-500/10 rounded transition-colors"
+                                            title="Tandai sebagai reject/rusak"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                          <DialogHeader>
+                                            <DialogTitle className="flex items-center gap-2 text-red-600">
+                                              <AlertTriangle className="w-5 h-5" />
+                                              Tandai Batch Sebagai Reject
+                                            </DialogTitle>
+                                          </DialogHeader>
+                                          <form onSubmit={handleRejectBatch} className="space-y-4 mt-4">
                                           <div>
                                             <p className="text-sm font-medium mb-2">Batch Details</p>
                                             <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
@@ -437,6 +542,7 @@ function ProductionPage() {
                                         </form>
                                       </DialogContent>
                                     </Dialog>
+                                    </div>
                                   )}
                                 </div>
                               </div>

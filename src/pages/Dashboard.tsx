@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
 import { useInventorySummary, useInventoryBatches, useRejectBatch } from '@/hooks/useInventory';
 import { useDistributions } from '@/hooks/useDistributions';
+import { useProductionNeeds } from '@/hooks/useProductionNeeds';
 import { PageLayout } from '@/components/PageLayout';
 import { StatCard } from '@/components/StatCard';
-import { Package, Factory, Truck, AlertTriangle, Coffee, Plus, X } from 'lucide-react';
+import { Package, Factory, Truck, AlertTriangle, Coffee, Plus, X, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,12 +23,14 @@ function Dashboard() {
   const { data: summary } = useInventorySummary();
   const { data: batches } = useInventoryBatches();
   const rejectBatch = useRejectBatch();
+  const { lowStock, riderCount } = useProductionNeeds();
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayDistributions } = useDistributions(today);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [selectedExpiryType, setSelectedExpiryType] = useState<'expiring' | 'expired' | null>(null);
   const [rejectionBatch, setRejectionBatch] = useState<any>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [showProductionNeeds, setShowProductionNeeds] = useState(false);
 
   // Calculate stats
   const totalInInventory = summary?.reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
@@ -97,13 +100,18 @@ function Dashboard() {
           value={totalCups}
           subValue={`dari ${productCount} produk`}
         />
-        <StatCard
-          icon={AlertTriangle}
-          label="Mendekati Expired"
-          value={expiringBatches.length}
-          subValue="batch"
-          variant={expiringBatches.length > 0 ? 'warning' : 'default'}
-        />
+        <button
+          onClick={() => setShowProductionNeeds(true)}
+          className="cursor-pointer"
+        >
+          <StatCard
+            icon={TrendingDown}
+            label="Perlu Diproduksi"
+            value={lowStock.length}
+            subValue="produk low stock"
+            variant={lowStock.length > 0 ? 'warning' : 'default'}
+          />
+        </button>
       </div>
 
       {/* Expiring Soon Alert - 3 Days */}
@@ -366,6 +374,81 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Production Needs Modal */}
+      <Dialog open={showProductionNeeds} onOpenChange={setShowProductionNeeds}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingDown className="w-5 h-5" />
+              Produk Perlu Diproduksi
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {lowStock.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Semua produk stock sudah cukup</p>
+              </div>
+            ) : (
+              lowStock.map((need) => (
+                <div
+                  key={need.product_id}
+                  className="p-4 border border-warning/30 bg-warning/5 rounded-lg"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm">{need.product_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {need.category === 'product' ? 'Produk' : 'Add-on'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Perlu diproduksi</p>
+                      <p className="text-xl font-bold text-warning">{need.needed}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-background/50 rounded p-3 text-xs space-y-2">
+                    <div className="flex justify-between">
+                      <span>Stok saat ini:</span>
+                      <span className="font-medium">{need.current_stock} unit</span>
+                    </div>
+                    <div className="border-b border-border pb-2 mb-2" />
+                    
+                    <div className="font-medium text-muted-foreground mb-1">Kebutuhan:</div>
+                    <div className="flex justify-between">
+                      <span className="ml-2">• Distribusi ke rider:</span>
+                      <span>{need.total_allocation} unit</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="ml-2">• Buffer di gudang:</span>
+                      <span>{need.buffer_target} unit</span>
+                    </div>
+                    <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
+                      <span>Total dibutuhkan:</span>
+                      <span className="text-warning">{need.total_needed} unit</span>
+                    </div>
+                    <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold text-warning">
+                      <span>Perlu diproduksi:</span>
+                      <span>{need.needed} unit</span>
+                    </div>
+                    
+                    {need.stock_after_distribution > 0 && (
+                      <div className="border-t border-border pt-2 mt-2 text-muted-foreground">
+                        <p className="text-xs">Stok sisa setelah distribusi: {need.stock_after_distribution} unit</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Rumus: ({need.allocation_per_rider} × {riderCount} rider) + {need.buffer_target} buffer - {need.current_stock} = {need.needed} perlu diproduksi
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
