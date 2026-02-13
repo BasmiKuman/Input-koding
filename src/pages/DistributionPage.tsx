@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useRiders, useAddRider } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
 import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock, usePendingDistributions } from '@/hooks/useDistributions';
+import { useReconciliationSummary } from '@/hooks/useReconciliation';
 import { useProducts } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
-import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle } from 'lucide-react';
+import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -34,6 +35,7 @@ function DistributionPage() {
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayDistributions } = useDistributions(today);
   const { data: pendingDistributions } = usePendingDistributions();
+  const reconciliationSummary = useReconciliationSummary({ start: today, end: today });
   const addRider = useAddRider();
   const addDistribution = useAddDistribution();
   const bulkDistribution = useBulkDistribution();
@@ -286,18 +288,37 @@ function DistributionPage() {
       const rawAmount = state?.amount?.trim() || '';
       
       // Validate input
-      if (!rawAmount) continue;
+      if (!rawAmount) {
+        console.warn(`Skipping dist ${dist.id} - no amount`);
+        continue;
+      }
       
       const amount = parseInt(rawAmount, 10);
       
       if (isNaN(amount) || amount <= 0) {
         console.warn(`Invalid amount for ${dist.batch?.product?.name}: "${state.amount}"`);
+        errorCount++;
+        errorDetails.push({
+          product: dist.batch?.product?.name || 'Unknown',
+          amount: state.amount,
+          error: 'Jumlah harus berupa angka positif',
+          remaining: dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0),
+        });
         continue;
       }
       
       try {
         // Frontend validation before sending to backend
         const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+        
+        console.log(`📌 Safety check for ${dist.batch?.product?.name}:`, {
+          total: dist.quantity,
+          input: amount,
+          remaining: remaining,
+          sold: dist.sold_quantity || 0,
+          returned: dist.returned_quantity || 0,
+          rejected: dist.rejected_quantity || 0,
+        });
         
         if (amount > remaining) {
           const msg = `Jumlah ${amount} melebihi stok rider (tersisa: ${remaining})`;
@@ -334,6 +355,7 @@ function DistributionPage() {
           product: dist.batch?.product?.name,
           amount: state.amount,
           error: errorMsg,
+          remaining,
         });
         
         errorDetails.push({
@@ -359,16 +381,17 @@ function DistributionPage() {
     if (successCount > 0) {
       toast.success(`✅ ${successCount} item berhasil diupdate!`);
       
-      // If all successful, close adjustment panel
+      // If all successful, close adjustment panel and clear state
       if (errorCount === 0) {
-        setAdjustmentRiderId(null);
+        // Clear states immediately
         setAdjustmentStates({});
+        setAdjustmentRiderId(null);
       }
     }
     
     if (errorCount > 0) {
       const errorMsg = errorDetails
-        .map(e => `${e.product}: ${e.error}`)
+        .map(e => `${e.product}: ${e.error} (input: ${e.amount}, max: ${e.remaining})`)
         .join('\n');
       toast.error(
         `❌ ${errorCount} item gagal:\n${errorMsg}\n\nSilakan periksa dan coba lagi.`,
@@ -386,6 +409,17 @@ function DistributionPage() {
       if (trimmed && !/^\d+$/.test(trimmed)) {
         // Invalid input - only allow digits
         console.warn(`Invalid input: "${value}"`);
+        return;
+      }
+      // Prevent empty state for valid positive numbers
+      if (trimmed === '') {
+        setAdjustmentStates(prev => ({
+          ...prev,
+          [distId]: {
+            ...prev[distId],
+            [field]: '',
+          },
+        }));
         return;
       }
     }
@@ -846,6 +880,68 @@ function DistributionPage() {
         </AnimatePresence>
       </div>
 
+      {/* Reconciliation Summary */}
+      {reconciliationSummary.totalDistributed > 0 && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-blue-50/50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-3">
+            <Database className="w-5 h-5 text-blue-600" />
+            <h3 className="font-semibold text-blue-900">📊 Reconciliation Hari Ini</h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+            <div className="bg-white/70 rounded p-2.5">
+              <p className="text-muted-foreground text-xs">Total Dikirim</p>
+              <p className="font-semibold text-lg text-blue-900">{reconciliationSummary.totalDistributed}</p>
+            </div>
+            <div className="bg-white/70 rounded p-2.5">
+              <p className="text-muted-foreground text-xs">Terjual ✓</p>
+              <p className="font-semibold text-lg text-green-600">{reconciliationSummary.totalSold}</p>
+            </div>
+            <div className="bg-white/70 rounded p-2.5">
+              <p className="text-muted-foreground text-xs">Dikembalikan</p>
+              <p className="font-semibold text-lg text-orange-600">{reconciliationSummary.totalReturned}</p>
+            </div>
+            <div className="bg-white/70 rounded p-2.5">
+              <p className="text-muted-foreground text-xs">Ditolak</p>
+              <p className="font-semibold text-lg text-red-600">{reconciliationSummary.totalRejected}</p>
+            </div>
+            <div className={cn(
+              'bg-white/70 rounded p-2.5',
+              reconciliationSummary.totalUnaccounted > 0 ? 'border-2 border-orange-300' : ''
+            )}>
+              <p className="text-muted-foreground text-xs">Belum Tercatat</p>
+              <p className={cn(
+                'font-semibold text-lg',
+                reconciliationSummary.totalUnaccounted > 0 ? 'text-orange-600' : 'text-green-600'
+              )}>
+                {reconciliationSummary.totalUnaccounted}
+              </p>
+              {reconciliationSummary.totalUnaccounted > 0 && (
+                <p className="text-xs text-orange-600 mt-1">
+                  {Math.round((reconciliationSummary.totalUnaccounted / reconciliationSummary.totalDistributed) * 100)}% pending
+                </p>
+              )}
+            </div>
+          </div>
+          {reconciliationSummary.pendingItems.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <p className="text-xs font-medium text-blue-900 mb-2">
+                ⚠️ Ada {reconciliationSummary.pendingItems.length} item yang belum tercatat:
+              </p>
+              <div className="space-y-1 text-xs">
+                {reconciliationSummary.pendingItems.slice(0, 3).map(item => (
+                  <p key={item.id} className="text-blue-700">
+                    • {item.productName} × {item.unaccountedQuantity} unit (dari rider {item.riderName})
+                  </p>
+                ))}
+                {reconciliationSummary.pendingItems.length > 3 && (
+                  <p className="text-blue-700">• +{reconciliationSummary.pendingItems.length - 3} item lainnya...</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Today's Distributions */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -1096,11 +1192,51 @@ function DistributionPage() {
                             </div>
                           </div>
 
+                          {/* Preview of changes before submission */}
+                          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-primary mb-2">📋 Preview Perubahan:</p>
+                            <div className="space-y-1 max-h-48 overflow-y-auto">
+                              {activeDists.filter(dist => {
+                                const state = adjustmentStates[dist.id];
+                                return state?.amount && parseInt(state.amount) > 0;
+                              }).map(dist => {
+                                const state = adjustmentStates[dist.id];
+                                const actionLabel = {
+                                  'sell': '✓ Terjual',
+                                  'return': '↩ Kembali',
+                                  'reject': '✗ Tolak'
+                                }[state.action || 'sell'];
+                                
+                                return (
+                                  <div key={dist.id} className="flex items-center justify-between text-xs bg-white/50 rounded p-1.5">
+                                    <span className="font-medium text-primary truncate">
+                                      {dist.batch?.product?.name}
+                                    </span>
+                                    <span className="text-primary/70 ml-2">
+                                      {state.amount || '0'} × {actionLabel}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {activeDists.every(dist => {
+                              const state = adjustmentStates[dist.id];
+                              return !state?.amount || parseInt(state.amount) === 0;
+                            }) && (
+                              <p className="text-xs text-muted-foreground text-center py-1">
+                                Belum ada perubahan yang diinput
+                              </p>
+                            )}
+                          </div>
+
                           <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
                             <Button
                               type="submit"
                               className="flex-1"
-                              disabled={adjustRiderStock.isPending}
+                              disabled={adjustRiderStock.isPending || activeDists.every(dist => {
+                                const state = adjustmentStates[dist.id];
+                                return !state?.amount || parseInt(state.amount) === 0;
+                              })}
                             >
                               {adjustRiderStock.isPending ? 'Menyimpan...' : 'Simpan Semua Perubahan'}
                             </Button>
@@ -1306,11 +1442,51 @@ function DistributionPage() {
                                   </div>
                                 </div>
 
+                                {/* Preview of changes before submission */}
+                                <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
+                                  <p className="text-xs font-semibold text-orange-700 mb-2">📋 Preview Perubahan:</p>
+                                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                                    {riderDists.filter(dist => {
+                                      const state = adjustmentStates[dist.id];
+                                      return state?.amount && parseInt(state.amount) > 0;
+                                    }).map(dist => {
+                                      const state = adjustmentStates[dist.id];
+                                      const actionLabel = {
+                                        'sell': '✓ Terjual',
+                                        'return': '↩ Kembali',
+                                        'reject': '✗ Tolak'
+                                      }[state.action || 'sell'];
+                                      
+                                      return (
+                                        <div key={dist.id} className="flex items-center justify-between text-xs bg-white/50 rounded p-1.5">
+                                          <span className="font-medium text-orange-700 truncate">
+                                            {dist.batch?.product?.name}
+                                          </span>
+                                          <span className="text-orange-600 ml-2">
+                                            {state.amount || '0'} × {actionLabel}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {riderDists.every(dist => {
+                                    const state = adjustmentStates[dist.id];
+                                    return !state?.amount || parseInt(state.amount) === 0;
+                                  }) && (
+                                    <p className="text-xs text-muted-foreground text-center py-1">
+                                      Belum ada perubahan yang diinput
+                                    </p>
+                                  )}
+                                </div>
+
                                 <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
                                   <Button
                                     type="submit"
                                     className="flex-1"
-                                    disabled={adjustRiderStock.isPending}
+                                    disabled={adjustRiderStock.isPending || riderDists.every(dist => {
+                                      const state = adjustmentStates[dist.id];
+                                      return !state?.amount || parseInt(state.amount) === 0;
+                                    })}
                                   >
                                     {adjustRiderStock.isPending ? 'Menyimpan...' : 'Simpan Semua Perubahan'}
                                   </Button>
