@@ -20,6 +20,8 @@ export interface InventoryBatch {
   rejected_quantity?: number;
   rejection_reason?: string;
   rejected_at?: string;
+  warehouse_rejected_quantity?: number;
+  warehouse_rejected_at?: string;
   product?: Product;
 }
 
@@ -54,11 +56,12 @@ export interface InventorySummary {
   total_sold: number;
   total_returned: number;
   total_rejected: number;
+  total_warehouse_rejected: number;
   batches: InventoryBatch[];
 }
 
 export interface RejectInfo {
-  type: 'production' | 'rider';
+  type: 'production' | 'rider' | 'warehouse';
   product_name: string;
   quantity: number;
   reason?: string;

@@ -80,12 +80,14 @@ export function useInventorySummary() {
             total_sold: 0,
             total_returned: 0,
             total_rejected: 0,
+            total_warehouse_rejected: 0,
             batches: [],
           });
         }
 
         const summary = summaryMap.get(productId)!;
         summary.total_in_inventory += batch.current_quantity;
+        summary.total_warehouse_rejected += batch.warehouse_rejected_quantity || 0;
         summary.batches.push(batch);
       }
 
@@ -226,6 +228,45 @@ export function useRejectBatch() {
     },
     onError: (error: Error) => {
       toast.error('Gagal memusnahkan batch: ' + error.message);
+    },
+  });
+}
+
+export function useUpdateWarehouseReject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      quantity,
+      reason
+    }: { 
+      id: string; 
+      quantity: number;
+      reason?: string;
+    }) => {
+      // Update warehouse_rejected_quantity for per-piece warehouse rejections
+      const { error } = await supabase
+        .from('inventory_batches' as never)
+        .update({ 
+          warehouse_rejected_quantity: quantity,
+          warehouse_rejected_at: quantity > 0 ? new Date().toISOString() : null,
+          notes: quantity > 0 
+            ? `WAREHOUSE_REJECTED: ${quantity} pcs${reason ? ' - ' + reason : ''} at ${new Date().toISOString()}`
+            : ''
+        } as never)
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
+      toast.success('Data reject gudang berhasil diperbarui');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal memperbarui reject gudang: ' + error.message);
     },
   });
 }

@@ -109,9 +109,11 @@ function ReportsPage() {
     let totalSold = 0;
     let totalReturned = 0;
     let totalRejected = 0;
+    let totalWarehouseRejected = 0;
 
     batchesData?.forEach(b => {
       totalProduced += b.initial_quantity;
+      totalWarehouseRejected += b.warehouse_rejected_quantity || 0;
     });
 
     distData?.forEach(d => {
@@ -121,7 +123,7 @@ function ReportsPage() {
       totalRejected += d.rejected_quantity || 0;
     });
 
-    return { totalProduced, totalDistributed, totalSold, totalReturned, totalRejected };
+    return { totalProduced, totalDistributed, totalSold, totalReturned, totalRejected, totalWarehouseRejected };
   };
 
   const stats = calculateStats(filteredBatches, filteredDistributions);
@@ -288,7 +290,7 @@ function ReportsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <div className="stat-card bg-primary/5 border-primary/20">
           <div className="flex items-center gap-2 mb-2">
             <Coffee className="w-5 h-5 text-primary" />
@@ -321,9 +323,16 @@ function ReportsPage() {
         </div>
         <div className="stat-card bg-red-500/5 border-red-500/20">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-medium">❌ Ditolak</span>
+            <span className="text-sm font-medium">❌ Reject Rider</span>
           </div>
           <p className="stat-value text-red-600">{stats.totalRejected}</p>
+          <p className="text-xs text-muted-foreground">periode ini</p>
+        </div>
+        <div className="stat-card bg-orange-500/5 border-orange-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium">🔧 Reject Gudang</span>
+          </div>
+          <p className="stat-value text-orange-600">{stats.totalWarehouseRejected}</p>
           <p className="text-xs text-muted-foreground">periode ini</p>
         </div>
       </div>
@@ -365,9 +374,13 @@ function ReportsPage() {
               <span className="text-muted-foreground">Total Dikembalikan</span>
               <span className="font-semibold text-lg text-orange-600">{stats.totalReturned} unit</span>
             </div>
-            <div className="flex justify-between items-center py-2">
+            <div className="flex justify-between items-center py-2 border-b border-border/50">
               <span className="text-muted-foreground">Total Ditolak/Rusak (Rider)</span>
               <span className="font-semibold text-lg text-red-600">{stats.totalRejected} unit</span>
+            </div>
+            <div className="flex justify-between items-center py-2">
+              <span className="text-muted-foreground">Total Rusak di Gudang (Warehouse)</span>
+              <span className="font-semibold text-lg text-orange-600">{stats.totalWarehouseRejected} unit</span>
             </div>
           </div>
         </CollapsibleContent>
@@ -418,6 +431,12 @@ function ReportsPage() {
                     <span>Di Gudang: {item.total_in_inventory}</span>
                     <span>Di Rider: {inRider}</span>
                     <span>Terjual: {item.total_sold}</span>
+                    {item.total_warehouse_rejected > 0 && (
+                      <span className="text-orange-600">Rusak Gudang: {item.total_warehouse_rejected}</span>
+                    )}
+                    {item.total_rejected > 0 && (
+                      <span className="text-red-600">Reject Rider: {item.total_rejected}</span>
+                    )}
                   </div>
                 </div>
               );

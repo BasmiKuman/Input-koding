@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
-import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity } from '@/hooks/useInventory';
+import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity, useUpdateWarehouseReject } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
-import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2 } from 'lucide-react';
+import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2, AlertOctagon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -30,6 +30,7 @@ function ProductionPage() {
   const addBatch = useAddBatch();
   const rejectBatch = useRejectBatch();
   const updateBatchQuantity = useUpdateBatchQuantity();
+  const updateWarehouseReject = useUpdateWarehouseReject();
   const [isOpen, setIsOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [selectedRejectBatch, setSelectedRejectBatch] = useState<string | null>(null);
@@ -37,6 +38,10 @@ function ProductionPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedEditBatch, setSelectedEditBatch] = useState<any>(null);
   const [editedQuantity, setEditedQuantity] = useState('');
+  const [warehouseRejectDialogOpen, setWarehouseRejectDialogOpen] = useState(false);
+  const [selectedWarehouseRejectBatch, setSelectedWarehouseRejectBatch] = useState<any>(null);
+  const [warehouseRejectQuantity, setWarehouseRejectQuantity] = useState('');
+  const [warehouseRejectReason, setWarehouseRejectReason] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [productionDate, setProductionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -144,6 +149,33 @@ function ProductionPage() {
     setSelectedEditBatch(null);
     setEditedQuantity('');
     toast.success('Batch berhasil diperbarui');
+  };
+
+  const handleWarehouseReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedWarehouseRejectBatch || !warehouseRejectQuantity) return;
+
+    const quantity = parseInt(warehouseRejectQuantity);
+    if (quantity < 0) {
+      toast.error('Jumlah tidak boleh negatif');
+      return;
+    }
+
+    if (quantity > selectedWarehouseRejectBatch.current_quantity) {
+      toast.error(`Jumlah reject tidak boleh lebih dari stok tersedia (${selectedWarehouseRejectBatch.current_quantity})`);
+      return;
+    }
+
+    await updateWarehouseReject.mutateAsync({
+      id: selectedWarehouseRejectBatch.id,
+      quantity: quantity,
+      reason: warehouseRejectReason.trim() || undefined,
+    });
+
+    setWarehouseRejectDialogOpen(false);
+    setSelectedWarehouseRejectBatch(null);
+    setWarehouseRejectQuantity('');
+    setWarehouseRejectReason('');
   };
 
   const getDaysUntilExpiry = (expiryDate: string) => {
@@ -374,6 +406,11 @@ function ProductionPage() {
                                   <p className="text-xs text-muted-foreground">
                                     Awal: {batch.initial_quantity} • Sisa: {batch.current_quantity}
                                   </p>
+                                  {batch.warehouse_rejected_quantity && batch.warehouse_rejected_quantity > 0 && (
+                                    <p className="text-xs text-orange-600 mt-1">
+                                      🔧 Reject Gudang: {batch.warehouse_rejected_quantity} pcs
+                                    </p>
+                                  )}
                                   {isRejected && batch.notes && (
                                     <p className="text-xs text-red-600 mt-1">
                                       {batch.notes}
@@ -541,8 +578,104 @@ function ProductionPage() {
                                           </div>
                                         </form>
                                       </DialogContent>
-                                    </Dialog>
-                                    </div>
+                                    </Dialog>                                    <Dialog open={warehouseRejectDialogOpen && selectedWarehouseRejectBatch?.id === batch.id} onOpenChange={(open) => {
+                                      if (open) {
+                                        setWarehouseRejectDialogOpen(true);
+                                        setSelectedWarehouseRejectBatch(batch);
+                                        setWarehouseRejectQuantity((batch.warehouse_rejected_quantity || 0).toString());
+                                      } else {
+                                        setWarehouseRejectDialogOpen(false);
+                                        setSelectedWarehouseRejectBatch(null);
+                                        setWarehouseRejectQuantity('');
+                                        setWarehouseRejectReason('');
+                                      }
+                                    }}>
+                                      <DialogTrigger asChild>
+                                        <button
+                                          className="p-1 text-orange-600 hover:bg-orange-500/10 rounded transition-colors"
+                                          title="Catat barang rusak di gudang"
+                                        >
+                                          <AlertOctagon className="w-4 h-4" />
+                                        </button>
+                                      </DialogTrigger>
+                                      <DialogContent>
+                                        <DialogHeader>
+                                          <DialogTitle className="flex items-center gap-2 text-orange-600">
+                                            <AlertOctagon className="w-5 h-5" />
+                                            Catat Reject Gudang (Barang Rusak)
+                                          </DialogTitle>
+                                        </DialogHeader>
+                                        <form onSubmit={handleWarehouseReject} className="space-y-4 mt-4">
+                                          <div>
+                                            <p className="text-sm font-medium mb-2">Batch Details</p>
+                                            <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                                              <p><span className="font-medium">Produk:</span> {batch.product?.name}</p>
+                                              <p><span className="font-medium">Produksi:</span> {format(new Date(batch.production_date), 'dd/MM/yyyy')}</p>
+                                              <p><span className="font-medium">Expired:</span> {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}</p>
+                                              <p><span className="font-medium">Stok Saat Ini:</span> {batch.current_quantity} unit</p>
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium mb-2">Jumlah Barang Rusak (pcs)</label>
+                                            <input
+                                              type="number"
+                                              value={warehouseRejectQuantity}
+                                              onChange={(e) => setWarehouseRejectQuantity(e.target.value)}
+                                              placeholder="Contoh: 5"
+                                              className="input-field"
+                                              min="0"
+                                              max={batch.current_quantity}
+                                              required
+                                            />
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              Stok tersedia: {batch.current_quantity} unit
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium mb-2">Alasan Kerusakan (Opsional)</label>
+                                            <textarea
+                                              value={warehouseRejectReason}
+                                              onChange={(e) => setWarehouseRejectReason(e.target.value)}
+                                              placeholder="Contoh: Kemasan penyok, produk bocor, jamur, dll"
+                                              className="input-field min-h-[60px]"
+                                            />
+                                          </div>
+                                          {batch.warehouse_rejected_quantity && batch.warehouse_rejected_quantity > 0 && (
+                                            <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+                                              <p className="text-xs text-orange-600">
+                                                📋 Saat ini ada {batch.warehouse_rejected_quantity} unit yang tercatat rusak.
+                                              </p>
+                                            </div>
+                                          )}
+                                          <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+                                            <p className="text-xs text-orange-600">
+                                              ℹ️ Catat jumlah barang yang rusak/tidak layak jual di gudang untuk laporan akurat.
+                                            </p>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              type="submit"
+                                              className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                              disabled={!warehouseRejectQuantity || updateWarehouseReject.isPending}
+                                            >
+                                              {updateWarehouseReject.isPending ? 'Menyimpan...' : 'Simpan Reject Gudang'}
+                                            </Button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setWarehouseRejectDialogOpen(false);
+                                                setSelectedWarehouseRejectBatch(null);
+                                                setWarehouseRejectQuantity('');
+                                                setWarehouseRejectReason('');
+                                              }}
+                                              className="btn-outline flex-1"
+                                            >
+                                              Batal
+                                            </button>
+                                          </div>
+                                        </form>
+                                      </DialogContent>
+                                    </Dialog>                                    </div>
                                   )}
                                 </div>
                               </div>
