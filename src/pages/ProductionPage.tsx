@@ -380,6 +380,7 @@ function ProductionPage() {
                   >
                     <div className="divide-y divide-border">
                       {consolidated.batches
+                        .filter(b => b.current_quantity > 0)
                         .sort((a, b) => new Date(b.production_date).getTime() - new Date(a.production_date).getTime())
                         .map((batch) => {
                           const daysUntil = getDaysUntilExpiry(batch.expiry_date);
