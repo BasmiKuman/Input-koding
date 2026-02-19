@@ -2,9 +2,11 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Distribution, InventorySummary, InventoryBatch } from '@/types/database';
 import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 interface ReportData {
-  date: string;
+  dateRange: { start: string; end: string };
+  filterType?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'range';
   batches: InventoryBatch[];
   distributions: Distribution[];
   summary: InventorySummary[];
@@ -12,7 +14,23 @@ interface ReportData {
 
 export function generateDailyReport(data: ReportData) {
   const doc = new jsPDF();
-  const reportDate = format(new Date(data.date), 'dd/MM/yyyy');
+  let reportTitle = 'LAPORAN HARIAN INVENTORI';
+  let reportDate = format(new Date(data.dateRange.start), 'dd/MM/yyyy');
+  
+  // Adjust title and date display based on filter type
+  if (data.filterType === 'weekly') {
+    reportTitle = 'LAPORAN MINGGUAN INVENTORI';
+    reportDate = `${format(new Date(data.dateRange.start), 'dd/MM')} - ${format(new Date(data.dateRange.end), 'dd/MM/yyyy')}`;
+  } else if (data.filterType === 'monthly') {
+    reportTitle = 'LAPORAN BULANAN INVENTORI';
+    reportDate = format(new Date(data.dateRange.start), 'MMMM yyyy', { locale: localeId });
+  } else if (data.filterType === 'yearly') {
+    reportTitle = 'LAPORAN TAHUNAN INVENTORI';
+    reportDate = format(new Date(data.dateRange.start), 'yyyy');
+  } else if (data.filterType === 'range') {
+    reportTitle = 'LAPORAN INVENTORI (CUSTOM RANGE)';
+    reportDate = `${format(new Date(data.dateRange.start), 'dd/MM')} - ${format(new Date(data.dateRange.end), 'dd/MM/yyyy')}`;
+  }
   
   let yPos = 0;
 
@@ -20,12 +38,12 @@ export function generateDailyReport(data: ReportData) {
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(42, 157, 143);
-    doc.text('LAPORAN HARIAN INVENTORI', 105, 15, { align: 'center' });
+    doc.text(reportTitle, 105, 15, { align: 'center' });
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(60, 60, 60);
-    doc.text('Tanggal: ' + reportDate, 105, 22, { align: 'center' });
+    doc.text('Periode: ' + reportDate, 105, 22, { align: 'center' });
     
     doc.setDrawColor(42, 157, 143);
     doc.setLineWidth(0.5);

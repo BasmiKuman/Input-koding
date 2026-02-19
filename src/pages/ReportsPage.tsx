@@ -49,12 +49,8 @@ function ReportsPage() {
   
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
-  const { data: distributions } = useDistributions(selectedDate);
-  const updateDistribution = useUpdateDistribution();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSavingDistributions, setIsSavingDistributions] = useState(false);
-
-  // Determine date range based on filter type
+  
+  // Determine date range based on filter type (moved before hook call)
   const getDateRange = () => {
     const baseDate = new Date(selectedDate);
     
@@ -93,17 +89,26 @@ function ReportsPage() {
   };
 
   const dateRange = getDateRange();
+  const { data: distributions } = useDistributions(undefined, dateRange);
+  const updateDistribution = useUpdateDistribution();
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingDistributions, setIsSavingDistributions] = useState(false);
 
   // Filter data based on date range
+  // Get batch IDs from distributions in the date range (to ensure we only show batches that were actually distributed)
+  const batchIdInDistributions = new Set(distributions?.map(d => d.batch_id) || []);
+
+  // Filter batches - either by production date OR if they appear in distributions for this period
   const filteredBatches = batches?.filter(b => {
     const bDate = b.production_date;
-    return bDate >= dateRange.start && bDate <= dateRange.end;
+    const isInDateRange = bDate >= dateRange.start && bDate <= dateRange.end;
+    const isInDistribution = batchIdInDistributions.has(b.id);
+    // Show batch if it was produced in this period OR if it was distributed in this period
+    return isInDateRange || isInDistribution;
   }) || [];
 
-  const filteredDistributions = distributions?.filter(d => {
-    const dDate = d.distributed_at?.split('T')[0];
-    return dDate && dDate >= dateRange.start && dDate <= dateRange.end;
-  }) || [];
+  // Distributions are already filtered by dateRange from hook, no need to filter again
+  const filteredDistributions = distributions || [];
 
   // Calculate summary stats
   const calculateStats = (batchesData: typeof batches, distData: typeof distributions) => {
@@ -172,7 +177,8 @@ function ReportsPage() {
     setIsGenerating(true);
     try {
       generateDailyReport({
-        date: selectedDate,
+        dateRange: dateRange,
+        filterType: filterType,
         batches: filteredBatches,
         distributions: filteredDistributions,
         summary: summary,
