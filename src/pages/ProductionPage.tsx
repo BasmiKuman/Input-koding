@@ -156,8 +156,8 @@ function ProductionPage() {
     if (!selectedWarehouseRejectBatch || !warehouseRejectQuantity) return;
 
     const quantity = parseInt(warehouseRejectQuantity);
-    if (quantity < 0) {
-      toast.error('Jumlah tidak boleh negatif');
+    if (quantity <= 0) {
+      toast.error('Jumlah harus lebih dari 0');
       return;
     }
 
@@ -582,7 +582,7 @@ function ProductionPage() {
                                       if (open) {
                                         setWarehouseRejectDialogOpen(true);
                                         setSelectedWarehouseRejectBatch(batch);
-                                        setWarehouseRejectQuantity((batch.warehouse_rejected_quantity || 0).toString());
+                                        setWarehouseRejectQuantity('');
                                       } else {
                                         setWarehouseRejectDialogOpen(false);
                                         setSelectedWarehouseRejectBatch(null);
@@ -616,19 +616,19 @@ function ProductionPage() {
                                             </div>
                                           </div>
                                           <div>
-                                            <label className="block text-sm font-medium mb-2">Jumlah Barang Rusak (pcs)</label>
+                                            <label className="block text-sm font-medium mb-2">Jumlah Tambahan Barang Rusak (pcs)</label>
                                             <input
                                               type="number"
                                               value={warehouseRejectQuantity}
                                               onChange={(e) => setWarehouseRejectQuantity(e.target.value)}
                                               placeholder="Contoh: 5"
                                               className="input-field"
-                                              min="0"
+                                              min="1"
                                               max={batch.current_quantity}
                                               required
                                             />
                                             <p className="text-xs text-muted-foreground mt-1">
-                                              Stok tersedia: {batch.current_quantity} unit
+                                              Stok tersedia: {batch.current_quantity} unit • Sudah reject: {batch.warehouse_rejected_quantity || 0} unit
                                             </p>
                                           </div>
                                           <div>

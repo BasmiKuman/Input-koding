@@ -245,15 +245,32 @@ export function useUpdateWarehouseReject() {
       quantity: number;
       reason?: string;
     }) => {
-      // Update warehouse_rejected_quantity for per-piece warehouse rejections
+      // First get current warehouse_rejected_quantity to add to it
+      const { data: batchData, error: fetchError } = await supabase
+        .from('inventory_batches' as never)
+        .select('warehouse_rejected_quantity, current_quantity')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const batch = batchData as { warehouse_rejected_quantity: number; current_quantity: number } | null;
+      if (!batch) throw new Error('Batch tidak ditemukan');
+
+      if (quantity > batch.current_quantity) {
+        throw new Error(`Jumlah reject (${quantity}) melebihi stok tersedia (${batch.current_quantity})`);
+      }
+
+      const newTotal = (batch.warehouse_rejected_quantity || 0) + quantity;
+
+      // Add to warehouse_rejected_quantity (additive) and reduce current_quantity
       const { error } = await supabase
         .from('inventory_batches' as never)
         .update({ 
-          warehouse_rejected_quantity: quantity,
-          warehouse_rejected_at: quantity > 0 ? new Date().toISOString() : null,
-          notes: quantity > 0 
-            ? `WAREHOUSE_REJECTED: ${quantity} pcs${reason ? ' - ' + reason : ''} at ${new Date().toISOString()}`
-            : ''
+          warehouse_rejected_quantity: newTotal,
+          current_quantity: batch.current_quantity - quantity,
+          warehouse_rejected_at: new Date().toISOString(),
+          notes: `WAREHOUSE_REJECTED: ${newTotal} pcs total${reason ? ' - ' + reason : ''} at ${new Date().toISOString()}`
         } as never)
         .eq('id', id);
       
