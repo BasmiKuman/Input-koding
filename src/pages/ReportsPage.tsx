@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useInventoryBatches, useInventorySummary } from '@/hooks/useInventory';
-import { useDistributions } from '@/hooks/useDistributions';
+import { useDistributions, useUpdateDistribution } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
 import { FileText, Download, Calendar, Coffee, Package, ChevronDown, X, Edit2, Trash2 } from 'lucide-react';
 import { format, startOfWeek, startOfMonth, startOfYear, endOfWeek, endOfMonth, endOfYear, addDays } from 'date-fns';
@@ -49,7 +49,9 @@ function ReportsPage() {
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
   const { data: distributions } = useDistributions(selectedDate);
+  const updateDistribution = useUpdateDistribution();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingDistributions, setIsSavingDistributions] = useState(false);
 
   // Determine date range based on filter type
   const getDateRange = () => {
@@ -176,6 +178,80 @@ function ReportsPage() {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleSaveEditedDistributions = async () => {
+    if (Object.keys(editingValues).length === 0) return;
+
+    setIsSavingDistributions(true);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    try {
+      // Process each edited item
+      for (const item of riderModalData) {
+        const editVal = editingValues[item.id];
+        if (!editVal) continue; // Skip if not edited
+
+        const newSold = parseInt(editVal.sold || '0');
+        const newReturned = parseInt(editVal.returned || '0');
+        const newRejected = parseInt(editVal.rejected || '0');
+
+        // Check if there are actual changes
+        if (
+          newSold === item.soldQty &&
+          newReturned === item.returnedQty &&
+          newRejected === item.rejectedQty
+        ) {
+          continue; // No changes, skip
+        }
+
+        // Validate total doesn't exceed quantity
+        const total = newSold + newReturned + newRejected;
+        if (total > item.quantity) {
+          errors.push(
+            `${item.productName}: Total melebihi jumlah dikirim (${total} > ${item.quantity})`
+          );
+          errorCount++;
+          continue;
+        }
+
+        try {
+          await updateDistribution.mutateAsync({
+            id: item.id,
+            sold_quantity: newSold,
+            returned_quantity: newReturned,
+          });
+          successCount++;
+        } catch (error) {
+          errorCount++;
+          errors.push(
+            `${item.productName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      }
+
+      if (successCount > 0) {
+        // Clear editing state
+        setEditingValues({});
+        setEditingDistId(null);
+      }
+
+      // Show result message
+      if (errorCount === 0) {
+        // Success - modal will close due to clearing editingValues
+        setIsRiderModalOpen(false);
+      } else if (successCount > 0) {
+        alert(
+          `${successCount} item berhasil disimpan.\n\nGagal: ${errors.join('; ')}`
+        );
+      } else {
+        alert(`Gagal menyimpan perubahan:\n${errors.join('\n')}`);
+      }
+    } finally {
+      setIsSavingDistributions(false);
     }
   };
 
@@ -890,10 +966,10 @@ function ReportsPage() {
               <Button
                 variant="default"
                 className="flex-1"
-                disabled={Object.keys(editingValues).length === 0}
-                title="Fitur simpan akan diimplementasikan di update selanjutnya"
+                disabled={Object.keys(editingValues).length === 0 || isSavingDistributions}
+                onClick={handleSaveEditedDistributions}
               >
-                💾 Simpan Perubahan
+                {isSavingDistributions ? '⏳ Menyimpan...' : '💾 Simpan Perubahan'}
               </Button>
             </div>
           </div>

@@ -3,9 +3,9 @@ import { supabase } from '@/lib/supabase';
 import type { Distribution } from '@/types/database';
 import { toast } from 'sonner';
 
-export function useDistributions(date?: string) {
+export function useDistributions(date?: string, dateRange?: { start: string; end: string }) {
   return useQuery({
-    queryKey: ['distributions', date],
+    queryKey: ['distributions', date, dateRange],
     queryFn: async () => {
       let query = supabase
         .from('distributions' as never)
@@ -19,7 +19,14 @@ export function useDistributions(date?: string) {
         `)
         .order('distributed_at', { ascending: false });
       
-      if (date) {
+      // If date range provided, use it (for reports)
+      if (dateRange) {
+        query = query
+          .gte('distributed_at', `${dateRange.start}T00:00:00`)
+          .lte('distributed_at', `${dateRange.end}T23:59:59`);
+      } 
+      // Otherwise use single date (for daily view)
+      else if (date) {
         const startOfDay = `${date}T00:00:00`;
         const endOfDay = `${date}T23:59:59`;
         query = query

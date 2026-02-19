@@ -578,7 +578,11 @@ function ProductionPage() {
                                           </div>
                                         </form>
                                       </DialogContent>
-                                    </Dialog>                                    <Dialog open={warehouseRejectDialogOpen && selectedWarehouseRejectBatch?.id === batch.id} onOpenChange={(open) => {
+                                    </Dialog>
+                                    </div>
+                                  )}
+                                  {batch.current_quantity > 0 && (
+                                    <Dialog open={warehouseRejectDialogOpen && selectedWarehouseRejectBatch?.id === batch.id} onOpenChange={(open) => {
                                       if (open) {
                                         setWarehouseRejectDialogOpen(true);
                                         setSelectedWarehouseRejectBatch(batch);
@@ -675,7 +679,7 @@ function ProductionPage() {
                                           </div>
                                         </form>
                                       </DialogContent>
-                                    </Dialog>                                    </div>
+                                    </Dialog>
                                   )}
                                 </div>
                               </div>

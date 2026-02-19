@@ -123,61 +123,68 @@ function DistributionPage() {
         }
         distributed.add(product.id);
 
-        // Find batch yang belum expired dan belum dimusnahkan
-        const batch = availableBatches?.find(b => {
-          if (b.product_id !== product.id) {
-            console.log(`  ❌ ${product.name}: Batch product_id ${b.product_id} !== ${product.id}`);
-            return false;
-          }
-          if (b.current_quantity <= 0) {
-            console.log(`  ❌ ${product.name}: qty ${b.current_quantity} <= 0`);
-            return false;
-          }
+        // Find ALL valid batches for this product (sorted by expiry date - FIFO)
+        const validBatches = availableBatches?.filter(b => {
+          if (b.product_id !== product.id) return false;
+          if (b.current_quantity <= 0) return false;
           
           // Jangan ambil batch yang sudah dimusnahkan
-          if (b.notes && b.notes.includes('REJECTED')) {
-            console.log(`  ❌ ${product.name}: batch rejected`);
-            return false;
-          }
+          if (b.notes && b.notes.includes('REJECTED')) return false;
           
           // Jangan ambil batch yang sudah expired
           const daysUntil = Math.ceil(
             (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           );
-          
-          // MUST BE >= 0 (0 hari = today, masih boleh. -1 = expired)
-          if (daysUntil < 0) {
-            console.log(`  ❌ ${product.name}: expired (${daysUntil} days)`);
-            return false;
-          }
-          
-          console.log(`  ✅ ${product.name}: Valid batch found (${daysUntil} days until expiry)`);
-          return true;
-        });
+          return daysUntil >= 0;
+        }).sort((a, b) => 
+          new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+        ) || [];
         
-        if (!batch) {
+        if (validBatches.length === 0) {
           console.log(`⚠️ ${product.name} (ID: ${product.id}): No valid batch found`);
           failedProducts.push({name: product.name, reason: 'No valid batch found'});
           continue;
         }
 
-        const quantity = product.category === 'addon' 
+        const requiredQuantity = product.category === 'addon' 
           ? 5 
           : (DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5);
 
-        console.log(`✅ Distributing ${product.name}: ${quantity} from batch ${batch.id}`);
+        console.log(`✅ Distributing ${product.name}: Need ${requiredQuantity} units. Available batches: ${validBatches.length}`);
 
-        try {
-          await addDistribution.mutateAsync({
-            rider_id: autoDistributionRiderId,
-            batch_id: batch.id,
-            quantity: quantity,
-          });
-          successCount++;
-          console.log(`   → Success!`);
-        } catch (error) {
-          console.error(`   → Error:`, error);
-          failedProducts.push({name: product.name, reason: error instanceof Error ? error.message : 'Unknown error'});
+        let remainingQuantity = requiredQuantity;
+        let batchIndex = 0;
+
+        // Distribute from available batches until quantity is met or no batches left
+        while (remainingQuantity > 0 && batchIndex < validBatches.length) {
+          const batch = validBatches[batchIndex];
+          const quantityFromBatch = Math.min(remainingQuantity, batch.current_quantity);
+
+          console.log(`  📦 Batch ${batchIndex + 1}/${validBatches.length}: Taking ${quantityFromBatch} units from ${batch.id} (available: ${batch.current_quantity})`);
+
+          try {
+            await addDistribution.mutateAsync({
+              rider_id: autoDistributionRiderId,
+              batch_id: batch.id,
+              quantity: quantityFromBatch,
+            });
+            successCount++;
+            remainingQuantity -= quantityFromBatch;
+            console.log(`   → Success! Remaining: ${remainingQuantity} units`);
+          } catch (error) {
+            console.error(`   → Error:`, error);
+            failedProducts.push({
+              name: product.name, 
+              reason: error instanceof Error ? error.message : 'Unknown error'
+            });
+            break; // Stop trying for this product
+          }
+
+          batchIndex++;
+        }
+
+        if (remainingQuantity > 0) {
+          console.log(`⚠️ ${product.name}: Could not fulfill all ${requiredQuantity} units. Missing: ${remainingQuantity}`);
         }
       }
 
