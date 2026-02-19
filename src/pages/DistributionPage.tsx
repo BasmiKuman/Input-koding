@@ -185,8 +185,6 @@ function DistributionPage() {
 
         if (remainingQuantity > 0) {
           console.log(`⚠️ ${product.name}: Could not fulfill all ${requiredQuantity} units. Missing: ${remainingQuantity}`);
-          failedProducts.push({name: product.name, reason: error instanceof Error ? error.message : 'Unknown error'});
->>>>>>> 1421a09ef2648a4ecf788a8ccabaf2874cf045ff
         }
       }
 
