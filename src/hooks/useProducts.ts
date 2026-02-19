@@ -52,8 +52,8 @@ export function useUpdateProduct() {
       if (description !== undefined) updateData.description = description;
 
       const { data, error } = await supabase
-        .from('products')
-        .update(updateData)
+        .from('products' as never)
+        .update(updateData as never)
         .eq('id', id)
         .select()
         .single();
@@ -79,8 +79,8 @@ export function useUpdateProductPrice() {
       if (price < 0) throw new Error('Harga tidak boleh negatif');
 
       const { data, error } = await supabase
-        .from('products')
-        .update({ price })
+        .from('products' as never)
+        .update({ price } as never)
         .eq('id', id)
         .select()
         .single();

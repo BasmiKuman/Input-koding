@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useInventoryBatches, useInventorySummary } from '@/hooks/useInventory';
-import { useDistributions } from '@/hooks/useDistributions';
+import { useDistributions, useUpdateDistribution } from '@/hooks/useDistributions';
 import { PageLayout } from '@/components/PageLayout';
 import { FileText, Download, Calendar, Coffee, Package, ChevronDown, X, Edit2, Trash2 } from 'lucide-react';
 import { format, startOfWeek, startOfMonth, startOfYear, endOfWeek, endOfMonth, endOfYear, addDays } from 'date-fns';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'range';
 
@@ -49,6 +50,7 @@ function ReportsPage() {
   const { data: batches } = useInventoryBatches();
   const { data: summary } = useInventorySummary();
   const { data: distributions } = useDistributions(selectedDate);
+  const updateDistribution = useUpdateDistribution();
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Determine date range based on filter type
@@ -890,10 +892,50 @@ function ReportsPage() {
               <Button
                 variant="default"
                 className="flex-1"
-                disabled={Object.keys(editingValues).length === 0}
-                title="Fitur simpan akan diimplementasikan di update selanjutnya"
+                disabled={updateDistribution.isPending}
+                onClick={async () => {
+                  let successCount = 0;
+                  let errorCount = 0;
+                  for (const item of riderModalData) {
+                    const editVal = editingValues[item.id];
+                    if (!editVal) continue;
+                    const newSold = parseInt(editVal.sold || '0');
+                    const newReturned = parseInt(editVal.returned || '0');
+                    const newRejected = parseInt(editVal.rejected || '0');
+                    
+                    // Skip if no changes
+                    if (newSold === item.soldQty && newReturned === item.returnedQty && newRejected === item.rejectedQty) continue;
+                    
+                    // Validate total doesn't exceed quantity
+                    if (newSold + newReturned + newRejected > item.quantity) {
+                      toast.error(`${item.productName}: Total melebihi jumlah dikirim`);
+                      errorCount++;
+                      continue;
+                    }
+                    
+                    try {
+                      await updateDistribution.mutateAsync({
+                        id: item.id,
+                        sold_quantity: newSold,
+                        returned_quantity: newReturned,
+                        notes: `edited at ${new Date().toISOString()}`,
+                      });
+                      successCount++;
+                    } catch (error) {
+                      errorCount++;
+                      toast.error(`Gagal update ${item.productName}: ${error instanceof Error ? error.message : 'Error'}`);
+                    }
+                  }
+                  if (successCount > 0) {
+                    toast.success(`${successCount} item berhasil disimpan`);
+                    setIsRiderModalOpen(false);
+                  }
+                  if (errorCount > 0 && successCount === 0) {
+                    toast.error('Gagal menyimpan perubahan');
+                  }
+                }}
               >
-                💾 Simpan Perubahan
+                {updateDistribution.isPending ? '⏳ Menyimpan...' : '💾 Simpan Perubahan'}
               </Button>
             </div>
           </div>
