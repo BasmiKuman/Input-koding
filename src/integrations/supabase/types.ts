@@ -22,6 +22,8 @@ export type Database = {
           id: string
           notes: string | null
           quantity: number
+          rejected_at: string | null
+          rejected_quantity: number
           returned_quantity: number
           rider_id: string
           sold_quantity: number
@@ -33,6 +35,8 @@ export type Database = {
           id?: string
           notes?: string | null
           quantity?: number
+          rejected_at?: string | null
+          rejected_quantity?: number
           returned_quantity?: number
           rider_id: string
           sold_quantity?: number
@@ -44,6 +48,8 @@ export type Database = {
           id?: string
           notes?: string | null
           quantity?: number
+          rejected_at?: string | null
+          rejected_quantity?: number
           returned_quantity?: number
           rider_id?: string
           sold_quantity?: number
@@ -72,8 +78,11 @@ export type Database = {
           expiry_date: string
           id: string
           initial_quantity: number
+          notes: string | null
           product_id: string
           production_date: string
+          warehouse_rejected_at: string | null
+          warehouse_rejected_quantity: number
         }
         Insert: {
           created_at?: string
@@ -81,8 +90,11 @@ export type Database = {
           expiry_date: string
           id?: string
           initial_quantity?: number
+          notes?: string | null
           product_id: string
           production_date: string
+          warehouse_rejected_at?: string | null
+          warehouse_rejected_quantity?: number
         }
         Update: {
           created_at?: string
@@ -90,8 +102,11 @@ export type Database = {
           expiry_date?: string
           id?: string
           initial_quantity?: number
+          notes?: string | null
           product_id?: string
           production_date?: string
+          warehouse_rejected_at?: string | null
+          warehouse_rejected_quantity?: number
         }
         Relationships: [
           {
@@ -107,20 +122,26 @@ export type Database = {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
           created_at: string
+          description: string | null
           id: string
           name: string
+          price: number
         }
         Insert: {
           category?: Database["public"]["Enums"]["product_category"]
           created_at?: string
+          description?: string | null
           id?: string
           name: string
+          price?: number
         }
         Update: {
           category?: Database["public"]["Enums"]["product_category"]
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
+          price?: number
         }
         Relationships: []
       }
