@@ -101,10 +101,12 @@ export function useAddDistribution() {
       rider_id,
       batch_id,
       quantity,
+      distributed_at,
     }: {
       rider_id: string;
       batch_id: string;
       quantity: number;
+      distributed_at?: string;
     }) => {
       // First get current batch quantity
       const { data: batchData, error: batchError } = await supabase
@@ -136,7 +138,7 @@ export function useAddDistribution() {
           rider_id,
           batch_id,
           quantity,
-          distributed_at: new Date().toISOString(),
+          distributed_at: distributed_at ? new Date(distributed_at).toISOString() : new Date().toISOString(),
           returned_quantity: 0,
           sold_quantity: 0,
           rejected_quantity: 0,
@@ -168,10 +170,12 @@ export function useBulkDistribution() {
       rider_id,
       batch_ids,
       quantity_per_product,
+      distributed_at,
     }: {
       rider_id: string;
       batch_ids: string[];
       quantity_per_product: number;
+      distributed_at?: string;
     }) => {
       const results: Distribution[] = [];
 
@@ -206,7 +210,7 @@ export function useBulkDistribution() {
             rider_id,
             batch_id,
             quantity: actualQuantity,
-            distributed_at: new Date().toISOString(),
+            distributed_at: distributed_at ? new Date(distributed_at).toISOString() : new Date().toISOString(),
             returned_quantity: 0,
             sold_quantity: 0,
             rejected_quantity: 0,

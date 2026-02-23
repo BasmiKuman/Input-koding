@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 function DistributionPage() {
   const { data: riders } = useRiders();
@@ -49,6 +51,7 @@ function DistributionPage() {
   const [adjustmentStates, setAdjustmentStates] = useState<Record<string, { action: 'sell' | 'return' | 'reject'; amount: string }>>({});
   const [autoDistributionRiderId, setAutoDistributionRiderId] = useState<string | null>(null);
   const [autoDistributionMode, setAutoDistributionMode] = useState<'default' | 'custom' | null>(null);
+  const [adjustmentDate, setAdjustmentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   
   // Rider form
   const [riderName, setRiderName] = useState('');
@@ -58,11 +61,13 @@ function DistributionPage() {
   const [selectedRider, setSelectedRider] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('');
   const [distQuantity, setDistQuantity] = useState('');
+  const [distDate, setDistDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Bulk distribution form
   const [bulkRider, setBulkRider] = useState('');
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [bulkQuantity, setBulkQuantity] = useState('5');
+  const [bulkDistDate, setBulkDistDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Default distribution config
   const DEFAULT_DISTRIBUTION_CONFIG = {
@@ -223,11 +228,12 @@ function DistributionPage() {
 
   const handleDistribute = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRider || !selectedBatch || !distQuantity) return;
+    if (!selectedRider || !selectedBatch || !distQuantity || !distDate) return;
     await addDistribution.mutateAsync({
       rider_id: selectedRider,
       batch_id: selectedBatch,
       quantity: parseInt(distQuantity),
+      distributed_at: distDate,
     });
     setSelectedBatch('');
     setDistQuantity('');
@@ -236,11 +242,12 @@ function DistributionPage() {
 
   const handleBulkDistribute = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bulkRider || selectedBatches.length === 0 || !bulkQuantity) return;
+    if (!bulkRider || selectedBatches.length === 0 || !bulkQuantity || !bulkDistDate) return;
     await bulkDistribution.mutateAsync({
       rider_id: bulkRider,
       batch_ids: selectedBatches,
       quantity_per_product: parseInt(bulkQuantity),
+      distributed_at: bulkDistDate,
     });
     setBulkRider('');
     setSelectedBatches([]);
@@ -504,6 +511,27 @@ function DistributionPage() {
                   </p>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-2">Tanggal Distribusi</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="input-field w-full text-left"
+                      >
+                        {bulkDistDate ? format(new Date(bulkDistDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={bulkDistDate ? new Date(bulkDistDate) : undefined}
+                        onSelect={(date) => setBulkDistDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium">Pilih Produk</label>
                     <button
@@ -611,6 +639,27 @@ function DistributionPage() {
                     min="1"
                     max={availableBatches?.find(b => b.id === selectedBatch)?.current_quantity || 999}
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tanggal Distribusi</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="input-field w-full text-left"
+                      >
+                        {distDate ? format(new Date(distDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={distDate ? new Date(distDate) : undefined}
+                        onSelect={(date) => setDistDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <Button 
                   type="submit" 
@@ -1066,92 +1115,70 @@ function DistributionPage() {
                             </div>
 
                             {activeDists.map((dist) => {
-                            const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
-                            const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
-
-                            return (
-                              <div key={dist.id} className="border border-border rounded-lg p-3 space-y-3 bg-card">
-                                <div className="flex items-start justify-between">
-                                  <div>
-                                    <p className="font-medium text-sm">{dist.batch?.product?.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM/yy')}
-                                    </p>
+                              const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
+                              const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
+                              return (
+                                <div key={dist.id} className="border border-border rounded-lg p-3 space-y-3 bg-card">
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <p className="font-medium text-sm">{dist.batch?.product?.name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Exp: {format(new Date(dist.batch?.expiry_date || ''), 'dd/MM/yy')}
+                                      </p>
+                                    </div>
+                                    <div className="text-right text-xs">
+                                      <p className="font-semibold">{dist.quantity} unit</p>
+                                      <p className="text-muted-foreground">
+                                        📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ❌ {dist.rejected_quantity || 0} | ⭘ {remaining}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div className="text-right text-xs">
-                                    <p className="font-semibold">{dist.quantity} unit</p>
-                                    <p className="text-muted-foreground">
-                                      📦 {dist.sold_quantity || 0} | 🔄 {dist.returned_quantity || 0} | ❌ {dist.rejected_quantity || 0} | ⭘ {remaining}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="text-xs font-medium mb-1 block">Aksi</label>
-                                    <Select 
-                                      value={state.action || 'sell'} 
-                                      onValueChange={(val) => updateAdjustmentState(dist.id, 'action', val as 'sell' | 'return' | 'reject')}
-                                    >
-                                      <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="sell">Terjual</SelectItem>
-                                        <SelectItem value="return">Dikembalikan</SelectItem>
-                                        <SelectItem value="reject">Ditolak</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs font-medium mb-1 block">Jumlah</label>
-                                    <input
-                                      type="number"
-                                      value={state.amount || ''}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        // HTML number input akan handle validation
-                                        updateAdjustmentState(dist.id, 'amount', val);
-                                      }}
-                                      onBlur={(e) => {
-                                        // Sanitasi value pada blur - remove leading zeros, ensure valid
-                                        const val = e.target.value.trim();
-                                        if (val && /^\d+$/.test(val)) {
-                                          const num = parseInt(val, 10);
-                                          if (num > remaining) {
-                                            console.warn(`Input ${num} exceeds remaining ${remaining}, clamping to max`);
-                                            updateAdjustmentState(dist.id, 'amount', remaining.toString());
-                                            toast.info(`Jumlah diatur ke maksimum: ${remaining} unit`);
-                                          }
-                                        }
-                                      }}
-                                      placeholder="0"
-                                      className="input-field h-8 text-xs"
-                                      min="0"
-                                      max={remaining}
-                                      step="1"
-                                    />
-                                    {state.amount && parseInt(state.amount) > remaining && (
-                                      <p className="text-xs text-red-500 mt-1">Melebihi stok ({remaining} unit)</p>
-                                    )}
-                                  </div>
-                                  <div className="flex items-end gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => updateAdjustmentState(dist.id, 'amount', remaining.toString())}
-                                      className="btn-secondary text-xs h-8 px-2 whitespace-nowrap"
-                                      title="Isi dengan jumlah maksimal"
-                                    >
-                                      Semua
-                                    </button>
-                                    <div className="text-xs text-muted-foreground">
-                                      Maks: {remaining}
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                      <label className="text-xs font-medium mb-1 block">Aksi</label>
+                                      <Select 
+                                        value={state.action || 'sell'} 
+                                        onValueChange={(val) => updateAdjustmentState(dist.id, 'action', val as 'sell' | 'return' | 'reject')}
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="sell">Terjual</SelectItem>
+                                          <SelectItem value="return">Dikembalikan</SelectItem>
+                                          <SelectItem value="reject">Ditolak</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <label className="text-xs font-medium mb-1 block">Jumlah</label>
+                                      <input
+                                        type="number"
+                                        value={state.amount || ''}
+                                        onChange={(e) => updateAdjustmentState(dist.id, 'amount', e.target.value)}
+                                        placeholder="0"
+                                        className="input-field h-8 text-xs"
+                                        min="0"
+                                        max={remaining}
+                                      />
+                                    </div>
+                                    <div className="flex items-end gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateAdjustmentState(dist.id, 'amount', remaining.toString())}
+                                        className="btn-secondary text-xs h-8 px-2 whitespace-nowrap"
+                                        title="Isi dengan jumlah maksimal"
+                                      >
+                                        Semua
+                                      </button>
+                                      <div className="text-xs text-muted-foreground">
+                                        Maks: {remaining}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
 
                           {/* Quick action buttons for bulk fill */}
                           <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 space-y-2">
@@ -1213,7 +1240,6 @@ function DistributionPage() {
                                   'return': '↩ Kembali',
                                   'reject': '✗ Tolak'
                                 }[state.action || 'sell'];
-                                
                                 return (
                                   <div key={dist.id} className="flex items-center justify-between text-xs bg-white/50 rounded p-1.5">
                                     <span className="font-medium text-primary truncate">
@@ -1234,6 +1260,28 @@ function DistributionPage() {
                                 Belum ada perubahan yang diinput
                               </p>
                             )}
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="block text-xs font-medium mb-1">Tanggal Update Status</label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="input-field w-full text-left"
+                                >
+                                  {adjustmentDate ? format(new Date(adjustmentDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent align="start" className="w-auto p-0">
+                                <Calendar
+                                  mode="single"
+                                  selected={adjustmentDate ? new Date(adjustmentDate) : undefined}
+                                  onSelect={(date) => setAdjustmentDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
                           </div>
 
                           <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
@@ -1484,6 +1532,28 @@ function DistributionPage() {
                                       Belum ada perubahan yang diinput
                                     </p>
                                   )}
+                                </div>
+
+                                <div className="mb-3">
+                                  <label className="block text-xs font-medium mb-1">Tanggal Update Status</label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="input-field w-full text-left"
+                                      >
+                                        {adjustmentDate ? format(new Date(adjustmentDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="start" className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={adjustmentDate ? new Date(adjustmentDate) : undefined}
+                                        onSelect={(date) => setAdjustmentDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
                                 </div>
 
                                 <form onSubmit={handleAdjustment} className="flex gap-2 pt-2">
