@@ -296,15 +296,28 @@ export function generateDailyReport(data: ReportData) {
   yPos = 20;
   addPageHeader();
 
-  const todayBatches = data.batches.filter(b => b.production_date === data.date);
-  if (todayBatches.length > 0) {
+  // Filter batches based on filter type
+  const filterBatches = data.batches.filter(b => {
+    const batchDate = new Date(b.production_date);
+    const startDate = new Date(data.dateRange.start);
+    const endDate = new Date(data.dateRange.end);
+    
+    batchDate.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    
+    return batchDate >= startDate && batchDate <= endDate;
+  });
+
+  if (filterBatches.length > 0) {
+    const prodTitle = data.filterType === 'daily' ? 'PRODUKSI HARI INI' : 'PRODUKSI DALAM PERIODE';
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(42, 157, 143);
-    doc.text('PRODUKSI HARI INI', 14, yPos);
+    doc.text(prodTitle, 14, yPos);
     yPos += 6;
 
-    const prodData = todayBatches.map(b => [
+    const prodData = filterBatches.map(b => [
       b.product?.name || '-',
       b.initial_quantity.toString(),
       format(new Date(b.production_date), 'dd/MM/yyyy'),
@@ -630,7 +643,21 @@ export function generateDailyReport(data: ReportData) {
     doc.text('Dibuat: ' + format(new Date(), 'dd/MM/yyyy HH:mm'), 105, 296, { align: 'center' });
   }
 
-  const filename = 'Laporan_Inventori_' + format(new Date(data.date), 'yyyy-MM-dd') + '.pdf';
+  // Generate filename based on filter type and date range
+  let filename = 'Laporan_Inventori_';
+  if (data.filterType === 'daily') {
+    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '.pdf';
+  } else if (data.filterType === 'weekly' || data.filterType === 'range') {
+    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '_to_' + 
+               format(new Date(data.dateRange.end), 'yyyy-MM-dd') + '.pdf';
+  } else if (data.filterType === 'monthly') {
+    filename += format(new Date(data.dateRange.start), 'MM-yyyy') + '.pdf';
+  } else if (data.filterType === 'yearly') {
+    filename += format(new Date(data.dateRange.start), 'yyyy') + '.pdf';
+  } else {
+    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '.pdf';
+  }
+  
   doc.save(filename);
 }
 
